@@ -1,6 +1,8 @@
 'use client';
 import { usePathname, useRouter } from 'next/navigation';
+import { AthleteProvider, useAthlete } from '@/lib/athlete-context';
 import { VittaMark, HomeIcon, CalendarIcon, TrendIcon, MessageIcon, BellIcon } from '@/components/icons';
+import type { ReactNode } from 'react';
 
 const TABS = [
   { href: '/today',  label: 'Hoy',     Icon: HomeIcon     },
@@ -9,10 +11,10 @@ const TABS = [
   { href: '/coach',  label: 'Coach',   Icon: MessageIcon  },
 ];
 
-export default function AthleteLayout({ children }: { children: React.ReactNode }) {
+function AthleteLayoutInner({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
-  const activeTab = TABS.find(t => pathname === t.href || pathname.startsWith(t.href + '/'));
+  const router   = useRouter();
+  const { name, initials, loading } = useAthlete();
 
   const titleMap: Record<string, string> = {
     '/today': 'Tu sesión de hoy',
@@ -20,7 +22,9 @@ export default function AthleteLayout({ children }: { children: React.ReactNode 
     '/stats': 'Tu progreso',
     '/coach': 'Coach',
   };
-  const title = titleMap[pathname] || 'Vitta';
+  const title      = titleMap[pathname] || 'Vitta';
+  const firstName  = loading ? '…' : (name.split(' ')[0] || 'Atleta');
+  const avatarText = loading ? '…' : (initials || '?');
 
   return (
     <div className="athlete-root thin-scroll-dark" style={{
@@ -37,7 +41,9 @@ export default function AthleteLayout({ children }: { children: React.ReactNode 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <VittaMark size={30} bg="var(--vitta-cream)" fg="var(--vitta-navy-deep)"/>
           <div>
-            <div style={{ fontSize: 11, color: 'var(--d-text-faint)', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700 }}>Hola, Mateo</div>
+            <div style={{ fontSize: 11, color: 'var(--d-text-faint)', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700 }}>
+              Hola, {firstName}
+            </div>
             <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--d-text)', marginTop: 1 }}>{title}</div>
           </div>
         </div>
@@ -46,7 +52,9 @@ export default function AthleteLayout({ children }: { children: React.ReactNode 
             <BellIcon size={16}/>
             <span style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: '50%', background: 'var(--vitta-blue)' }}/>
           </button>
-          <div style={{ width: 32, height: 32, borderRadius: 16, background: 'linear-gradient(135deg, var(--vitta-blue) 0%, var(--vitta-blue-bright) 100%)', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700 }}>MH</div>
+          <div style={{ width: 32, height: 32, borderRadius: 16, background: 'linear-gradient(135deg, var(--vitta-blue) 0%, var(--vitta-blue-bright) 100%)', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700 }}>
+            {avatarText}
+          </div>
         </div>
       </div>
 
@@ -81,5 +89,13 @@ export default function AthleteLayout({ children }: { children: React.ReactNode 
         })}
       </div>
     </div>
+  );
+}
+
+export default function AthleteLayout({ children }: { children: ReactNode }) {
+  return (
+    <AthleteProvider>
+      <AthleteLayoutInner>{children}</AthleteLayoutInner>
+    </AthleteProvider>
   );
 }
