@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase';
 import { CATEGORIES } from '@/lib/constants';
 import { getCategoryIcon, PlusIcon, CalendarIcon, FlameIcon, TrendIcon, SparkleIcon, ChevronRight } from '@/components/icons';
 import StatusPill from '@/components/badges/StatusPill';
+import CreateSessionModal from '@/components/admin/CreateSessionModal';
 import type { Athlete } from '@/lib/types';
 
 const KPI = ({ label, value, sub, accent }: { label: string; value: string | number; sub: string; accent: string }) => (
@@ -32,6 +33,8 @@ export default function DashboardPage() {
   const router = useRouter();
   const [athletes, setAthletes] = useState<Athlete[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [todaySessions, setTodaySessions] = useState<{ id: string; title: string; duration: number; athlete_name: string }[]>([]);
 
   const fetchAthletes = useCallback(async () => {
     const supabase = createClient();
@@ -56,7 +59,28 @@ export default function DashboardPage() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { fetchAthletes(); }, [fetchAthletes]);
+  const fetchTodaySessions = useCallback(async () => {
+    const supabase = createClient();
+    const today = new Date().toISOString().slice(0, 10);
+    const { data } = await supabase
+      .from('sessions')
+      .select('id, title, duration, athletes(name)')
+      .eq('date', today)
+      .order('created_at');
+    if (data) {
+      setTodaySessions(data.map((s: any) => ({
+        id: s.id,
+        title: s.title,
+        duration: s.duration,
+        athlete_name: s.athletes?.name || '—',
+      })));
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAthletes();
+    fetchTodaySessions();
+  }, [fetchAthletes, fetchTodaySessions]);
 
   const peak    = athletes.filter(a => a.status === 'peak').length;
   const onTrack = athletes.filter(a => a.status === 'on-track').length;
@@ -66,6 +90,14 @@ export default function DashboardPage() {
 
   return (
     <div style={{ padding: '24px 28px 36px' }}>
+      {showModal && (
+        <CreateSessionModal
+          athletes={athletes}
+          onClose={() => setShowModal(false)}
+          onCreated={() => { fetchTodaySessions(); }}
+        />
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 20 }}>
         <div>
           <div style={{ fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-muted)' }}>
@@ -75,7 +107,7 @@ export default function DashboardPage() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-ghost" onClick={() => router.push('/athletes')}><PlusIcon size={14}/>Nuevo atleta</button>
-          <button className="btn btn-primary"><CalendarIcon size={14}/>Crear sesión</button>
+          <button className="btn btn-primary" onClick={() => setShowModal(true)}><CalendarIcon size={14}/>Crear sesión</button>
         </div>
       </div>
 
@@ -83,7 +115,7 @@ export default function DashboardPage() {
         <KPI label="Atletas activos"       value={loading ? '...' : athletes.length} sub={`${onTrack} en plan, ${missed} ausentes`} accent="var(--vitta-navy)"/>
         <KPI label="En pico"               value={loading ? '...' : peak}   sub="Esta semana"  accent="var(--vitta-blue)"/>
         <KPI label="Adherencia 7d"         value="—"   sub="Sin datos aún"  accent="var(--green)"/>
-        <KPI label="Sesiones planificadas" value="—"   sub="Sin datos aún"  accent="var(--amber)"/>
+        <KPI label="Sesiones hoy"          value={loading ? '...' : todaySessions.length} sub="Planificadas para hoy" accent="var(--amber)"/>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 14 }}>
@@ -162,11 +194,22 @@ export default function DashboardPage() {
           <div className="card" style={{ padding: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <div style={{ fontSize: 12, fontWeight: 700 }}>Sesiones de hoy</div>
-              <button className="btn btn-ghost btn-sm" style={{ fontSize: 10 }}>Calendario</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowModal(true)} style={{ fontSize: 10 }}>+ Crear</button>
             </div>
-            <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-              No hay sesiones planificadas para hoy.
-            </div>
+            {todaySessions.length === 0 ? (
+              <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                No hay sesiones planificadas para hoy.
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gap: 6 }}>
+                {todaySessions.map(s => (
+                  <div key={s.id} style={{ padding: '8px 10px', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: 12, fontWeight: 600 }}>{s.title}</div>
+                    <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>{s.athlete_name} · {s.duration} min</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

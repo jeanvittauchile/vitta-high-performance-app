@@ -1,6 +1,8 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { createClient } from '@/lib/supabase';
 import { VittaMark, HomeIcon, UsersIcon, CalendarIcon, LayersIcon, MessageIcon } from '@/components/icons';
 
 const items = [
@@ -13,6 +15,25 @@ const items = [
 
 export default function AdminSidebar() {
   const pathname = usePathname();
+  const [name, setName] = useState<string>('');
+  const [initials, setInitials] = useState<string>('');
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      const meta = user.user_metadata || {};
+      const fullName: string =
+        meta.full_name || meta.name ||
+        (user.email ? user.email.split('@')[0] : 'Coach');
+      const parts = fullName.trim().split(/\s+/);
+      const ini = parts.length >= 2
+        ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+        : fullName.slice(0, 2).toUpperCase();
+      setName(fullName);
+      setInitials(ini);
+    });
+  }, []);
 
   return (
     <div style={{
@@ -64,9 +85,14 @@ export default function AdminSidebar() {
             width: 28, height: 28, borderRadius: 14,
             background: 'linear-gradient(135deg, var(--vitta-blue) 0%, var(--vitta-blue-bright) 100%)',
             display: 'grid', placeItems: 'center', color: '#fff', fontWeight: 800, fontSize: 11,
-          }}>SC</div>
-          <div>
-            <div style={{ fontWeight: 600, color: 'var(--vitta-cream)' }}>Sebastián Coach</div>
+            flexShrink: 0,
+          }}>
+            {initials || '…'}
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 600, color: 'var(--vitta-cream)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {name || 'Cargando...'}
+            </div>
             <div style={{ fontSize: 9, color: 'rgba(244,239,224,0.55)', letterSpacing: '0.04em' }}>Administrador</div>
           </div>
         </div>
