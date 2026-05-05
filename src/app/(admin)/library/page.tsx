@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase';
 import { CATEGORIES, LEVELS } from '@/lib/constants';
-import { getCategoryIcon, PlusIcon, SearchIcon, CopyIcon, XIcon, VideoIcon, ExternalLinkIcon } from '@/components/icons';
+import { getCategoryIcon, PlusIcon, SearchIcon, CopyIcon, XIcon, VideoIcon, ExternalLinkIcon, PencilIcon, CheckIcon } from '@/components/icons';
 import LevelBadge from '@/components/badges/LevelBadge';
 import type { CategoryId, LevelId } from '@/lib/types';
 
@@ -91,6 +91,119 @@ function InfoBox({ label, children }: { label: string; children: React.ReactNode
     <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '8px 10px', border: '1px solid var(--border)' }}>
       <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 4 }}>{label}</div>
       {children}
+    </div>
+  );
+}
+
+// ─── Edit Exercise Modal ─────────────────────────────────────
+
+function EditExerciseModal({ exercise, onClose, onSaved }: {
+  exercise: LibExercise;
+  onClose: () => void;
+  onSaved: (updated: LibExercise) => void;
+}) {
+  const [name, setName] = useState(exercise.name);
+  const [category, setCategory] = useState<CategoryId>(exercise.category);
+  const [level, setLevel] = useState<LevelId>(exercise.level);
+  const [muscle, setMuscle] = useState(exercise.muscle === '—' ? '' : exercise.muscle);
+  const [equipment, setEquipment] = useState(exercise.equipment === '—' ? '' : exercise.equipment);
+  const [videoUrl, setVideoUrl] = useState(exercise.video_url || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) { setError('El nombre es obligatorio.'); return; }
+    setSaving(true);
+    setError('');
+    const supabase = createClient();
+    const { error: err } = await supabase.from('exercises').update({
+      name: name.trim(),
+      category,
+      level,
+      muscle: muscle.trim() || null,
+      equipment: equipment.trim() || null,
+      video_url: videoUrl.trim() || null,
+    }).eq('id', exercise.dbId);
+    setSaving(false);
+    if (err) { setError(err.message); return; }
+    onSaved({
+      ...exercise,
+      name: name.trim(),
+      category,
+      level,
+      muscle: muscle.trim() || '—',
+      equipment: equipment.trim() || '—',
+      video_url: videoUrl.trim() || null,
+    });
+    onClose();
+  }
+
+  const inp: React.CSSProperties = {
+    width: '100%', padding: '8px 10px', borderRadius: 8,
+    border: '1px solid var(--border)', background: 'var(--surface-2)',
+    fontSize: 13, fontFamily: 'inherit', color: 'var(--text)', boxSizing: 'border-box',
+  };
+  const lbl: React.CSSProperties = {
+    fontSize: 10, fontWeight: 700, letterSpacing: '0.06em',
+    textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: 5,
+  };
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()}
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(14,25,54,0.55)', display: 'grid', placeItems: 'center' }}>
+      <div className="card" style={{ width: 480, padding: 24, maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 700 }}>Editar ejercicio</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{exercise.name}</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+            <XIcon size={18}/>
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 14 }}>
+          <div>
+            <label style={lbl}>Nombre *</label>
+            <input value={name} onChange={e => setName(e.target.value)} style={inp} required/>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={lbl}>Categoría</label>
+              <select value={category} onChange={e => setCategory(e.target.value as CategoryId)} style={inp}>
+                {Object.values(CATEGORIES).map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={lbl}>Nivel</label>
+              <select value={level} onChange={e => setLevel(e.target.value as LevelId)} style={inp}>
+                {Object.values(LEVELS).map(L => <option key={L.id} value={L.id}>{L.label}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label style={lbl}>Músculo principal</label>
+            <input value={muscle} onChange={e => setMuscle(e.target.value)} placeholder="ej. Pectoral · Tríceps" style={inp}/>
+          </div>
+          <div>
+            <label style={lbl}>Equipamiento</label>
+            <input value={equipment} onChange={e => setEquipment(e.target.value)} placeholder="ej. Barra + banco" style={inp}/>
+          </div>
+          <div>
+            <label style={lbl}>URL de video (YouTube, Vimeo…)</label>
+            <input type="url" value={videoUrl} onChange={e => setVideoUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." style={inp}/>
+          </div>
+          {error && (
+            <div style={{ fontSize: 12, color: 'var(--red)', padding: '7px 10px', background: 'rgba(215,71,75,0.08)', borderRadius: 6 }}>{error}</div>
+          )}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button type="button" onClick={onClose} className="btn btn-ghost">Cancelar</button>
+            <button type="submit" disabled={saving} className="btn btn-primary">
+              <CheckIcon size={13}/>{saving ? 'Guardando...' : 'Guardar cambios'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
@@ -332,6 +445,7 @@ export default function LibraryPage() {
   const [showNewExModal, setShowNewExModal] = useState(false);
   const [addToSessionEx, setAddToSessionEx] = useState<LibExercise | null>(null);
   const [detailEx, setDetailEx] = useState<LibExercise | null>(null);
+  const [editEx, setEditEx] = useState<LibExercise | null>(null);
 
   const fetchExercises = useCallback(() => {
     const supabase = createClient();
@@ -383,6 +497,16 @@ export default function LibraryPage() {
       )}
       {detailEx && (
         <ExerciseDetailModal exercise={detailEx} onClose={() => setDetailEx(null)}/>
+      )}
+      {editEx && (
+        <EditExerciseModal
+          exercise={editEx}
+          onClose={() => setEditEx(null)}
+          onSaved={updated => {
+            setExercises(prev => prev.map(ex => ex.dbId === updated.dbId ? updated : ex));
+            setEditEx(null);
+          }}
+        />
       )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 16 }}>
@@ -487,6 +611,12 @@ export default function LibraryPage() {
                           onClick={() => setDetailEx(ex)}
                           style={{ flex: 1, padding: '5px 0', borderRadius: 6, border: '1px solid var(--border)', background: 'white', color: 'var(--text-muted)', fontSize: 11, fontFamily: 'inherit', cursor: 'pointer', fontWeight: 500 }}>
                           Ver detalles
+                        </button>
+                        <button
+                          onClick={() => setEditEx(ex)}
+                          title="Editar ejercicio"
+                          style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-muted)', borderRadius: 6, width: 28, height: 28, display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                          <PencilIcon size={12}/>
                         </button>
                         <button
                           onClick={() => setAddToSessionEx(ex)}
