@@ -1,9 +1,9 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { CATEGORIES, DAY_TYPES } from '@/lib/constants';
-import { getCategoryIcon, PlusIcon, CopyIcon, LayersIcon, ChevronLeft, ChevronRight, SparkleIcon } from '@/components/icons';
+import { getCategoryIcon, PlusIcon, CopyIcon, LayersIcon, ChevronLeft, ChevronRight, SparkleIcon, TrashIcon } from '@/components/icons';
 import LevelBadge from '@/components/badges/LevelBadge';
 import type { Athlete, DayType, CategoryId, LevelId } from '@/lib/types';
 
@@ -39,7 +39,7 @@ interface DbSession {
 
 function calendarStart(year: number, month: number): Date {
   const first = new Date(year, month - 1, 1);
-  const dow = first.getDay(); // 0=Sun
+  const dow = first.getDay();
   const offset = dow === 0 ? -6 : 1 - dow;
   return new Date(year, month - 1, 1 + offset);
 }
@@ -50,7 +50,10 @@ function cellDate(year: number, month: number, w: number, d: number): Date {
 }
 
 function toISO(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 function defaultPlan(): DayType[][] {
@@ -186,29 +189,81 @@ function AddBlockForm({ sessionId, onSaved, onCancel }: { sessionId: string; onS
 function AddExerciseForm({ blockId, onSaved, onCancel }: { blockId: string; onSaved: () => void; onCancel: () => void }) {
   const [name, setName] = useState('');
   const [level, setLevel] = useState<LevelId>('basico');
+  const [note, setNote] = useState('');
+  const [setCount, setSetCount] = useState(3);
+  const [reps, setReps] = useState('5');
+  const [load, setLoad] = useState('');
+  const [rpeTarget, setRpeTarget] = useState('7');
+  const [restTime, setRestTime] = useState('2:00');
   const [saving, setSaving] = useState(false);
 
   async function save() {
     if (!name.trim()) return;
     setSaving(true);
     const supabase = createClient();
-    await supabase.from('session_exercises').insert({ block_id: blockId, name: name.trim(), level, sort_order: 0 });
+
+    const { data: existing } = await supabase
+      .from('session_exercises')
+      .select('sort_order')
+      .eq('block_id', blockId)
+      .order('sort_order', { ascending: false })
+      .limit(1);
+    const nextSort = ((existing?.[0]?.sort_order ?? -1) as number) + 1;
+
+    const { data: exData, error: exErr } = await supabase
+      .from('session_exercises')
+      .insert({ block_id: blockId, name: name.trim(), level, note: note.trim() || null, sort_order: nextSort })
+      .select('id')
+      .single();
+
+    if (!exErr && exData && setCount > 0) {
+      const sets = Array.from({ length: setCount }, (_, i) => ({
+        session_exercise_id: exData.id,
+        reps: reps || null,
+        load: load ? Number(load) : null,
+        rpe_target: rpeTarget ? Number(rpeTarget) : null,
+        rest: restTime || null,
+        sort_order: i,
+      }));
+      await supabase.from('sets').insert(sets);
+    }
+
     setSaving(false);
     onSaved();
   }
 
   const inp: React.CSSProperties = { padding: '6px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 12, fontFamily: 'inherit', color: 'var(--text)' };
+  const lbl: React.CSSProperties = { fontSize: 9, color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 3 };
 
   return (
-    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
-      <input placeholder="Nombre del ejercicio" value={name} onChange={e => setName(e.target.value)} style={{ ...inp, flex: 1 }}/>
-      <select value={level} onChange={e => setLevel(e.target.value as LevelId)} style={inp}>
-        <option value="basico">Básico</option>
-        <option value="intermedio">Intermedio</option>
-        <option value="avanzado">Avanzado</option>
-      </select>
-      <button onClick={save} disabled={saving || !name.trim()} className="btn btn-primary btn-sm">{saving ? '...' : 'Añadir'}</button>
-      <button onClick={onCancel} className="btn btn-ghost btn-sm">×</button>
+    <div style={{ marginTop: 8, padding: 12, background: 'rgba(46,107,214,0.05)', borderRadius: 10, border: '1px solid var(--border)', display: 'grid', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input placeholder="Nombre del ejercicio" value={name} onChange={e => setName(e.target.value)} style={{ ...inp, flex: 1 }}/>
+        <select value={level} onChange={e => setLevel(e.target.value as LevelId)} style={inp}>
+          <option value="basico">Básico</option>
+          <option value="intermedio">Intermedio</option>
+          <option value="avanzado">Avanzado</option>
+        </select>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
+        {[
+          { label: 'Series', el: <input type="number" min={1} max={20} value={setCount} onChange={e => setSetCount(Number(e.target.value))} style={{ ...inp, width: '100%' }}/> },
+          { label: 'Reps',   el: <input placeholder="5" value={reps} onChange={e => setReps(e.target.value)} style={{ ...inp, width: '100%' }}/> },
+          { label: 'Kg',     el: <input type="number" min={0} step={0.5} placeholder="—" value={load} onChange={e => setLoad(e.target.value)} style={{ ...inp, width: '100%' }}/> },
+          { label: 'RPE',    el: <input type="number" min={1} max={10} step={0.5} placeholder="7" value={rpeTarget} onChange={e => setRpeTarget(e.target.value)} style={{ ...inp, width: '100%' }}/> },
+          { label: 'Descanso', el: <input placeholder="2:00" value={restTime} onChange={e => setRestTime(e.target.value)} style={{ ...inp, width: '100%' }}/> },
+        ].map(({ label, el }) => (
+          <div key={label}>
+            <div style={lbl}>{label}</div>
+            {el}
+          </div>
+        ))}
+      </div>
+      <input placeholder="Nota / descripción (opcional)" value={note} onChange={e => setNote(e.target.value)} style={{ ...inp, width: '100%' }}/>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button onClick={save} disabled={saving || !name.trim()} className="btn btn-primary btn-sm">{saving ? '...' : 'Añadir ejercicio'}</button>
+        <button onClick={onCancel} className="btn btn-ghost btn-sm">Cancelar</button>
+      </div>
     </div>
   );
 }
@@ -216,8 +271,9 @@ function AddExerciseForm({ blockId, onSaved, onCancel }: { blockId: string; onSa
 // ─── Main page ───────────────────────────────────────────────
 
 export default function PlannerPage() {
-  const params = useParams();
-  const id = params.id as string;
+  const pathname = usePathname();
+  // Extract id directly from pathname — more reliable than useParams() in Next.js 16
+  const id = pathname.split('/athletes/')[1]?.split('/')[0] ?? '';
 
   const now = new Date();
   const [currentYear, setCurrentYear] = useState(now.getFullYear());
@@ -226,6 +282,7 @@ export default function PlannerPage() {
   const [athlete, setAthlete] = useState<Athlete | null>(null);
   const [athleteLoading, setAthleteLoading] = useState(true);
   const [monthPlan, setMonthPlan] = useState<DayType[][]>(defaultPlan());
+  const [monthSessionDates, setMonthSessionDates] = useState<Set<string>>(new Set());
   const [selectedDay, setSelectedDay] = useState<{ w: number; d: number } | null>(null);
   const [daySessions, setDaySessions] = useState<DbSession[]>([]);
   const [showNewSession, setShowNewSession] = useState(false);
@@ -247,21 +304,39 @@ export default function PlannerPage() {
 
   // ── Fetch month plan ───────────────────────────────────────
   useEffect(() => {
+    if (!id) return;
     const supabase = createClient();
     supabase.from('month_plans')
       .select('plan')
       .eq('athlete_id', id)
       .eq('year', currentYear)
       .eq('month', currentMonth)
-      .single()
+      .maybeSingle()
       .then(({ data }) => {
         setMonthPlan(data?.plan ?? defaultPlan());
       });
   }, [id, currentYear, currentMonth]);
 
+  // ── Fetch sessions dates for current month view ────────────
+  useEffect(() => {
+    if (!id) return;
+    const start = calendarStart(currentYear, currentMonth);
+    const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 4 * 7 - 1);
+    const supabase = createClient();
+    supabase
+      .from('sessions')
+      .select('date')
+      .eq('athlete_id', id)
+      .gte('date', toISO(start))
+      .lte('date', toISO(end))
+      .then(({ data }) => {
+        setMonthSessionDates(new Set((data || []).map((s: any) => s.date)));
+      });
+  }, [id, currentYear, currentMonth]);
+
   // ── Fetch sessions for selected day ──────────────────────
   const fetchDaySessions = useCallback(async () => {
-    if (!selectedDay) return;
+    if (!selectedDay || !id) return;
     const date = toISO(cellDate(currentYear, currentMonth, selectedDay.w, selectedDay.d));
     const supabase = createClient();
     const { data } = await supabase
@@ -289,6 +364,49 @@ export default function PlannerPage() {
   }, [id, selectedDay, currentYear, currentMonth]);
 
   useEffect(() => { fetchDaySessions(); }, [fetchDaySessions]);
+
+  // ── Delete session (cascade blocks → exercises → sets) ─────
+  async function deleteSession(sessionId: string) {
+    if (!confirm('¿Eliminar esta sesión? Se borrarán todos sus bloques y ejercicios.')) return;
+    const supabase = createClient();
+    const { data: blocks } = await supabase.from('session_blocks').select('id').eq('session_id', sessionId);
+    if (blocks?.length) {
+      const blockIds = blocks.map((b: any) => b.id);
+      const { data: exercises } = await supabase.from('session_exercises').select('id').in('block_id', blockIds);
+      if (exercises?.length) {
+        const exIds = exercises.map((e: any) => e.id);
+        await supabase.from('sets').delete().in('session_exercise_id', exIds);
+        await supabase.from('session_exercises').delete().in('id', exIds);
+      }
+      await supabase.from('session_blocks').delete().in('id', blockIds);
+    }
+    await supabase.from('sessions').delete().eq('id', sessionId);
+    const dateStr = daySessions.find(s => s.id === sessionId)?.date;
+    setDaySessions(prev => prev.filter(s => s.id !== sessionId));
+    if (dateStr) {
+      setMonthSessionDates(prev => {
+        const remaining = daySessions.filter(s => s.id !== sessionId && s.date === dateStr);
+        if (remaining.length === 0) { const next = new Set(prev); next.delete(dateStr); return next; }
+        return prev;
+      });
+    }
+  }
+
+  // ── Delete exercise ────────────────────────────────────────
+  async function deleteExercise(exerciseId: string, blockId: string) {
+    if (!confirm('¿Eliminar este ejercicio?')) return;
+    const supabase = createClient();
+    await supabase.from('sets').delete().eq('session_exercise_id', exerciseId);
+    await supabase.from('session_exercises').delete().eq('id', exerciseId);
+    setDaySessions(prev => prev.map(s => ({
+      ...s,
+      session_blocks: s.session_blocks.map(b =>
+        b.id === blockId
+          ? { ...b, session_exercises: b.session_exercises.filter(e => e.id !== exerciseId) }
+          : b
+      ),
+    })));
+  }
 
   // ── Save month plan ────────────────────────────────────────
   async function savePlan(plan: DayType[][]) {
@@ -322,7 +440,6 @@ export default function PlannerPage() {
   // ── Derived values ─────────────────────────────────────────
   const focusCat = CATEGORIES[athlete?.focus || 'empuje'] || CATEGORIES.empuje;
   const FocusIcon = getCategoryIcon(athlete?.focus || 'empuje');
-  const suggestedExercises = athlete ? [] : []; // exercises fetched live in library; here we just show focus info
 
   const todayISO = toISO(now);
 
@@ -359,6 +476,7 @@ export default function PlannerPage() {
           onClose={() => setShowNewSession(false)}
           onCreated={session => {
             setDaySessions(prev => [...prev, session]);
+            setMonthSessionDates(prev => new Set([...prev, selectedDate]));
             setShowNewSession(false);
           }}
         />
@@ -422,21 +540,27 @@ export default function PlannerPage() {
                   const isToday = dateISO === todayISO;
                   const dayNum = date.getDate();
                   const inMonth = date.getMonth() + 1 === currentMonth;
+                  const hasSession = monthSessionDates.has(dateISO);
+
+                  const displayColor = hasSession ? '#2E6BD6' : (dayType === 'REST' ? 'var(--text-muted)' : t.color);
+                  const displayLabel = hasSession ? 'Programado' : t.label;
+                  const displayBg    = hasSession ? 'rgba(46,107,214,0.10)' : (dayType === 'REST' ? 'var(--surface-2)' : t.bg);
+
                   return (
                     <button key={`${wi}-${di}`} onClick={() => setSelectedDay({ w: wi, d: di })} style={{
                       padding: '10px 8px', borderRadius: 8, minHeight: 78,
-                      background: dayType === 'REST' ? 'var(--surface-2)' : t.bg,
-                      border: isSelected ? `2px solid ${t.color}` : `1px solid ${isToday ? t.color : 'var(--border)'}`,
+                      background: displayBg,
+                      border: isSelected ? `2px solid ${displayColor}` : `1px solid ${isToday ? displayColor : 'var(--border)'}`,
                       cursor: 'pointer', textAlign: 'left',
                       display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
                       gap: 4, fontFamily: 'inherit', opacity: inMonth ? 1 : 0.45,
                     }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span className="mono" style={{ fontSize: 10, fontWeight: 700, color: isToday ? t.color : 'var(--text-muted)' }}>{dayNum}</span>
-                        {isToday && <span style={{ fontSize: 8, fontWeight: 700, color: t.color, letterSpacing: '0.08em' }}>HOY</span>}
+                        <span className="mono" style={{ fontSize: 10, fontWeight: 700, color: isToday ? displayColor : 'var(--text-muted)' }}>{dayNum}</span>
+                        {isToday && <span style={{ fontSize: 8, fontWeight: 700, color: displayColor, letterSpacing: '0.08em' }}>HOY</span>}
                       </div>
                       <div>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: dayType === 'REST' ? 'var(--text-muted)' : t.color, lineHeight: 1.15 }}>{t.label}</div>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: displayColor, lineHeight: 1.15 }}>{displayLabel}</div>
                       </div>
                     </button>
                   );
@@ -460,7 +584,12 @@ export default function PlannerPage() {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
-              <button className="btn btn-ghost btn-sm">Vista atleta</button>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => window.open(`/athletes/${id}/today`, '_blank')}
+              >
+                Vista atleta
+              </button>
               {selectedDay && (
                 <button className="btn btn-primary btn-sm" onClick={() => setShowNewSession(true)}>
                   <PlusIcon size={11}/>Nueva sesión
@@ -484,17 +613,27 @@ export default function PlannerPage() {
             <div style={{ display: 'grid', gap: 16 }}>
               {daySessions.map(session => (
                 <div key={session.id}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
-                    {[
-                      { label: 'Duración',     value: `${session.duration} min` },
-                      { label: 'RPE objetivo', value: session.rpe_target },
-                      { label: 'Bloques',      value: session.session_blocks.length },
-                    ].map(f => (
-                      <div key={f.label} style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '8px 10px', border: '1px solid var(--border)' }}>
-                        <div style={{ fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700 }}>{f.label}</div>
-                        <div style={{ fontSize: 13, fontWeight: 600, marginTop: 3 }}>{f.value}</div>
-                      </div>
-                    ))}
+                  {/* Session stats + delete */}
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 12 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, flex: 1 }}>
+                      {[
+                        { label: 'Duración',     value: `${session.duration} min` },
+                        { label: 'RPE objetivo', value: session.rpe_target },
+                        { label: 'Bloques',      value: session.session_blocks.length },
+                      ].map(f => (
+                        <div key={f.label} style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '8px 10px', border: '1px solid var(--border)' }}>
+                          <div style={{ fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700 }}>{f.label}</div>
+                          <div style={{ fontSize: 13, fontWeight: 600, marginTop: 3 }}>{f.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => deleteSession(session.id)}
+                      title="Eliminar sesión"
+                      style={{ flexShrink: 0, background: 'transparent', border: '1px solid var(--border)', borderRadius: 8, color: '#D7474B', cursor: 'pointer', padding: '8px 10px', display: 'grid', placeItems: 'center' }}
+                    >
+                      <TrashIcon size={14}/>
+                    </button>
                   </div>
 
                   <div style={{ display: 'grid', gap: 10 }}>
@@ -535,7 +674,13 @@ export default function PlannerPage() {
                                   </div>
                                   {item.note && <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>{item.note}</div>}
                                 </div>
-                                <button style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 2 }}>···</button>
+                                <button
+                                  onClick={() => deleteExercise(item.id, block.id)}
+                                  title="Eliminar ejercicio"
+                                  style={{ background: 'transparent', border: 'none', color: '#D7474B', cursor: 'pointer', padding: '2px 4px', opacity: 0.7 }}
+                                >
+                                  <TrashIcon size={13}/>
+                                </button>
                               </div>
                             ))}
                           </div>
@@ -580,7 +725,7 @@ export default function PlannerPage() {
           </div>
           <div>
             <div style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700 }}>Foco principal</div>
-            <div style={{ fontSize: 14, fontWeight: 700 }}>{focusCat.label}</div>
+            <div style={{ fontSize: 14, fontWeight: 700 }}>{athlete.focus || focusCat.label}</div>
           </div>
         </div>
 

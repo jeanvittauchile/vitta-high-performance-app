@@ -1,8 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { CATEGORIES } from '@/lib/constants';
-import { XIcon, PlusIcon, ChevronDown } from '@/components/icons';
+import { XIcon, PlusIcon } from '@/components/icons';
 import { createAthlete } from '@/lib/actions/create-athlete';
 
 const FOCUS_COLORS: Record<string, string> = {
@@ -36,7 +35,7 @@ export default function NewAthleteModal({ onClose, onCreated }: Props) {
     password:    '',
     age:         '',
     weeklyHours: '5',
-    focus:       'aerobicos',
+    focus:       '',
   });
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -135,7 +134,7 @@ export default function NewAthleteModal({ onClose, onCreated }: Props) {
           <div>
             <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{form.name || 'Nombre del atleta'}</div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-              {CATEGORIES[form.focus]?.label} · {form.age || '—'} años
+              {form.focus || '—'} · {form.age || '—'} años
             </div>
           </div>
         </div>
@@ -170,21 +169,12 @@ export default function NewAthleteModal({ onClose, onCreated }: Props) {
 
           {/* Foco */}
           <Field label="Foco principal">
-            <div style={{ position: 'relative' }}>
-              <select value={form.focus} onChange={set('focus')} style={{
-                width: '100%', appearance: 'none',
-                padding: '9px 32px 9px 10px',
-                border: '1px solid var(--border)',
-                borderRadius: 7, background: 'white',
-                color: 'var(--text)', fontSize: 13,
-                fontFamily: 'inherit', cursor: 'pointer',
-              }}>
-                {Object.values(CATEGORIES).map(c => (
-                  <option key={c.id} value={c.id}>{c.label}</option>
-                ))}
-              </select>
-              <ChevronDown size={12} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }}/>
-            </div>
+            <input
+              type="text"
+              value={form.focus}
+              onChange={set('focus')}
+              placeholder="ej. Triatleta élite enfocado en potencia aeróbica"
+            />
           </Field>
 
           {/* Error */}
