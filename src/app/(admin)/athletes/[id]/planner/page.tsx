@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { CATEGORIES, DAY_TYPES } from '@/lib/constants';
-import { getCategoryIcon, PlusIcon, CopyIcon, LayersIcon, ChevronLeft, ChevronRight, ChevronDown, SparkleIcon, TrashIcon, PencilIcon, CheckIcon } from '@/components/icons';
+import { getCategoryIcon, PlusIcon, CopyIcon, LayersIcon, ChevronLeft, ChevronRight, ChevronDown, SparkleIcon, TrashIcon, PencilIcon, CheckIcon, XIcon } from '@/components/icons';
 import LevelBadge from '@/components/badges/LevelBadge';
 import type { Athlete, DayType, CategoryId, LevelId } from '@/lib/types';
 
@@ -259,9 +259,12 @@ function AddExerciseForm({ blockId, onSaved, onCancel }: { blockId: string; onSa
   const inp: React.CSSProperties = { padding: '6px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 12, fontFamily: 'inherit', color: 'var(--text)' };
   const lbl: React.CSSProperties = { fontSize: 9, color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 3 };
 
+  const [saveError, setSaveError] = useState('');
+
   async function save() {
     if (!name.trim()) return;
     setSaving(true);
+    setSaveError('');
     const supabase = createClient();
     const { data: existing } = await supabase.from('session_exercises').select('sort_order').eq('block_id', blockId).order('sort_order', { ascending: false }).limit(1);
     const nextSort = ((existing?.[0]?.sort_order ?? -1) as number) + 1;
@@ -269,13 +272,15 @@ function AddExerciseForm({ blockId, onSaved, onCancel }: { blockId: string; onSa
       .from('session_exercises')
       .insert({ block_id: blockId, name: name.trim(), level, note: note.trim() || null, sort_order: nextSort })
       .select('id').single();
-    if (!exErr && exData && setCount > 0) {
+    if (exErr) { setSaveError(exErr.message); setSaving(false); return; }
+    if (exData && setCount > 0) {
       const sets = Array.from({ length: setCount }, (_, i) => ({
         session_exercise_id: exData.id, reps: reps || null,
         load: load ? Number(load) : null, rpe_target: rpeTarget ? Number(rpeTarget) : null,
-        rest: restTime || null, sort_order: i,
+        rest: restTime || null, done: false, sort_order: i,
       }));
-      await supabase.from('sets').insert(sets);
+      const { error: setsErr } = await supabase.from('sets').insert(sets);
+      if (setsErr) { setSaveError(setsErr.message); setSaving(false); return; }
     }
     setSaving(false);
     onSaved();
@@ -306,6 +311,7 @@ function AddExerciseForm({ blockId, onSaved, onCancel }: { blockId: string; onSa
         ))}
       </div>
       <input placeholder="Nota / descripción (opcional)" value={note} onChange={e => setNote(e.target.value)} style={{ ...inp, width: '100%' }}/>
+      {saveError && <div style={{ fontSize: 11, color: 'var(--red)', padding: '5px 8px', background: 'rgba(215,71,75,0.08)', borderRadius: 5 }}>{saveError}</div>}
       <div style={{ display: 'flex', gap: 6 }}>
         <button onClick={save} disabled={saving || !name.trim()} className="btn btn-primary btn-sm">{saving ? '...' : 'Añadir ejercicio'}</button>
         <button onClick={onCancel} className="btn btn-ghost btn-sm">Cancelar</button>
@@ -316,15 +322,17 @@ function AddExerciseForm({ blockId, onSaved, onCancel }: { blockId: string; onSa
 
 // ─── Add Set inline form ─────────────────────────────────────
 
-function AddSetForm({ exerciseId, nextSortOrder, onSaved, onCancel }: {
-  exerciseId: string; nextSortOrder: number;
-  onSaved: (set: DbSet) => void; onCancel: () => void;
+function AddSetForm({ exerciseId, onSaved, onClose }: {
+  exerciseId: string;
+  onSaved: (set: DbSet) => void;
+  onClose: () => void;
 }) {
   const [reps, setReps] = useState('');
   const [load, setLoad] = useState('');
   const [rpe, setRpe] = useState('');
   const [rest, setRest] = useState('');
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   const inp: React.CSSProperties = {
     padding: '5px 7px', borderRadius: 6, border: '1px solid var(--border)',
@@ -333,29 +341,79 @@ function AddSetForm({ exerciseId, nextSortOrder, onSaved, onCancel }: {
 
   async function save() {
     setSaving(true);
+    setError('');
     const supabase = createClient();
-    const { data, error } = await supabase.from('sets').insert({
+    const { data: existing } = await supabase.from('sets')
+      .select('sort_order').eq('session_exercise_id', exerciseId)
+      .order('sort_order', { ascending: false }).limit(1);
+    const nextSort = ((existing?.[0]?.sort_order ?? -1) as number) + 1;
+    const { data, error: err } = await supabase.from('sets').insert({
       session_exercise_id: exerciseId,
       reps: reps || null,
       load: load ? Number(load) : null,
       rpe_target: rpe ? Number(rpe) : null,
       rest: rest || null,
-      sort_order: nextSortOrder,
+      done: false,
+      sort_order: nextSort,
     }).select('id, reps, load, rpe_target, rest, sort_order').single();
     setSaving(false);
-    if (!error && data) onSaved(data as DbSet);
+    if (err) { setError(err.message); return; }
+    if (data) {
+      onSaved(data as DbSet);
+      setReps(''); setLoad(''); setRpe(''); setRest('');
+    }
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr auto auto', gap: 5, alignItems: 'center', padding: '6px 12px', borderTop: '1px solid var(--border)', background: 'rgba(46,107,214,0.04)' }}>
-      <input placeholder="Reps" value={reps} onChange={e => setReps(e.target.value)} style={inp}/>
-      <input placeholder="Kg" type="number" min={0} step={0.5} value={load} onChange={e => setLoad(e.target.value)} style={inp}/>
-      <input placeholder="RPE" type="number" min={1} max={10} step={0.5} value={rpe} onChange={e => setRpe(e.target.value)} style={inp}/>
-      <input placeholder="Descanso" value={rest} onChange={e => setRest(e.target.value)} style={inp}/>
-      <button onClick={save} disabled={saving} className="btn btn-primary btn-sm" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
-        {saving ? '...' : 'Añadir'}
-      </button>
-      <button onClick={onCancel} className="btn btn-ghost btn-sm" style={{ fontSize: 13 }}>×</button>
+    <div style={{ borderTop: '1px solid var(--border)', background: 'rgba(46,107,214,0.04)', padding: '6px 12px 8px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr auto auto', gap: 5, alignItems: 'center' }}>
+        <input placeholder="Reps" value={reps} onChange={e => setReps(e.target.value)} style={inp}/>
+        <input placeholder="Kg" type="number" min={0} step={0.5} value={load} onChange={e => setLoad(e.target.value)} style={inp}/>
+        <input placeholder="RPE" type="number" min={1} max={10} step={0.5} value={rpe} onChange={e => setRpe(e.target.value)} style={inp}/>
+        <input placeholder="Descanso" value={rest} onChange={e => setRest(e.target.value)} style={inp}/>
+        <button onClick={save} disabled={saving} className="btn btn-primary btn-sm" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
+          {saving ? '...' : 'Añadir'}
+        </button>
+        <button onClick={onClose} className="btn btn-ghost btn-sm" style={{ fontSize: 13 }}>×</button>
+      </div>
+      {error && <div style={{ fontSize: 10, color: 'var(--red)', marginTop: 4 }}>{error}</div>}
+    </div>
+  );
+}
+
+// ─── Edit Block inline form ───────────────────────────────────
+
+function EditBlockForm({ block, onSaved, onCancel }: {
+  block: DbBlock;
+  onSaved: (updated: DbBlock) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(block.name);
+  const [category, setCategory] = useState<CategoryId>(block.category);
+  const [saving, setSaving] = useState(false);
+  const inp: React.CSSProperties = { padding: '6px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 12, fontFamily: 'inherit', color: 'var(--text)' };
+
+  async function save() {
+    if (!name.trim()) return;
+    setSaving(true);
+    const supabase = createClient();
+    const cat = CATEGORIES[category];
+    const newColor = cat?.color || block.color || '#2E6BD6';
+    const { error } = await supabase.from('session_blocks')
+      .update({ name: name.trim(), category, color: newColor })
+      .eq('id', block.id);
+    setSaving(false);
+    if (!error) onSaved({ ...block, name: name.trim(), category, color: newColor });
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flex: 1 }}>
+      <input value={name} onChange={e => setName(e.target.value)} style={{ ...inp, flex: 1 }} placeholder="Nombre del bloque"/>
+      <select value={category} onChange={e => setCategory(e.target.value as CategoryId)} style={inp}>
+        {Object.values(CATEGORIES).map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+      </select>
+      <button onClick={save} disabled={saving || !name.trim()} className="btn btn-primary btn-sm">{saving ? '...' : 'Guardar'}</button>
+      <button onClick={onCancel} className="btn btn-ghost btn-sm">Cancelar</button>
     </div>
   );
 }
@@ -380,6 +438,7 @@ export default function PlannerPage() {
   const [showNewSession, setShowNewSession] = useState(false);
   const [editSession, setEditSession] = useState<DbSession | null>(null);
   const [addBlockFor, setAddBlockFor] = useState<string | null>(null);
+  const [editBlockId, setEditBlockId] = useState<string | null>(null);
   const [addExerciseFor, setAddExerciseFor] = useState<string | null>(null);
   const [expandedEx, setExpandedEx] = useState<Set<string>>(new Set());
   const [addSetFor, setAddSetFor] = useState<string | null>(null);
@@ -496,6 +555,22 @@ export default function PlannerPage() {
     }
   }
 
+  // ── Delete block ───────────────────────────────────────────
+  async function deleteBlock(blockId: string, sessionId: string) {
+    if (!confirm('¿Eliminar este bloque? Se borrarán todos sus ejercicios y series.')) return;
+    const supabase = createClient();
+    const { data: exercises } = await supabase.from('session_exercises').select('id').eq('block_id', blockId);
+    if (exercises?.length) {
+      const exIds = exercises.map((e: any) => e.id);
+      await supabase.from('sets').delete().in('session_exercise_id', exIds);
+      await supabase.from('session_exercises').delete().in('id', exIds);
+    }
+    await supabase.from('session_blocks').delete().eq('id', blockId);
+    setDaySessions(prev => prev.map(s =>
+      s.id === sessionId ? { ...s, session_blocks: s.session_blocks.filter(b => b.id !== blockId) } : s
+    ));
+  }
+
   // ── Delete exercise ────────────────────────────────────────
   async function deleteExercise(exerciseId: string, blockId: string) {
     if (!confirm('¿Eliminar este ejercicio?')) return;
@@ -506,6 +581,23 @@ export default function PlannerPage() {
       ...s,
       session_blocks: s.session_blocks.map(b =>
         b.id === blockId ? { ...b, session_exercises: b.session_exercises.filter(e => e.id !== exerciseId) } : b
+      ),
+    })));
+  }
+
+  // ── Delete set ─────────────────────────────────────────────
+  async function deleteSet(setId: string, exerciseId: string, blockId: string) {
+    const supabase = createClient();
+    await supabase.from('sets').delete().eq('id', setId);
+    setDaySessions(prev => prev.map(s => ({
+      ...s,
+      session_blocks: s.session_blocks.map(b =>
+        b.id === blockId ? {
+          ...b,
+          session_exercises: b.session_exercises.map(e =>
+            e.id === exerciseId ? { ...e, sets: e.sets.filter(st => st.id !== setId) } : e
+          ),
+        } : b
       ),
     })));
   }
@@ -743,19 +835,45 @@ export default function PlannerPage() {
                       const blockColor = block.color || CATEGORIES[block.category]?.color || '#2E6BD6';
                       return (
                         <div key={block.id} style={{ background: 'var(--surface-2)', borderRadius: 10, padding: 12, border: '1px solid var(--border)' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <div style={{ width: 26, height: 26, borderRadius: 6, background: `${blockColor}22`, color: blockColor, display: 'grid', placeItems: 'center' }}>
-                                <Ic size={13} stroke="currentColor"/>
-                              </div>
-                              <div>
-                                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em' }}>BLOQUE {String.fromCharCode(65 + bi)}</span>
-                                <span style={{ fontSize: 13, fontWeight: 600, marginLeft: 6 }}>{block.name}</span>
-                              </div>
-                            </div>
-                            <button className="btn btn-ghost btn-sm" onClick={() => setAddExerciseFor(addExerciseFor === block.id ? null : block.id)}>
-                              <PlusIcon size={11}/>Añadir ejercicio
-                            </button>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+                            {editBlockId === block.id ? (
+                              <EditBlockForm
+                                block={block}
+                                onSaved={updated => {
+                                  setDaySessions(prev => prev.map(s => ({
+                                    ...s,
+                                    session_blocks: s.session_blocks.map(b => b.id === block.id ? { ...b, ...updated } : b),
+                                  })));
+                                  setEditBlockId(null);
+                                }}
+                                onCancel={() => setEditBlockId(null)}
+                              />
+                            ) : (
+                              <>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <div style={{ width: 26, height: 26, borderRadius: 6, background: `${blockColor}22`, color: blockColor, display: 'grid', placeItems: 'center' }}>
+                                    <Ic size={13} stroke="currentColor"/>
+                                  </div>
+                                  <div>
+                                    <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em' }}>BLOQUE {String.fromCharCode(65 + bi)}</span>
+                                    <span style={{ fontSize: 13, fontWeight: 600, marginLeft: 6 }}>{block.name}</span>
+                                  </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                  <button onClick={() => setEditBlockId(block.id)} title="Editar bloque"
+                                    style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '3px 5px', borderRadius: 5 }}>
+                                    <PencilIcon size={12}/>
+                                  </button>
+                                  <button onClick={() => deleteBlock(block.id, session.id)} title="Eliminar bloque"
+                                    style={{ background: 'transparent', border: 'none', color: '#D7474B', cursor: 'pointer', padding: '3px 5px', borderRadius: 5 }}>
+                                    <TrashIcon size={12}/>
+                                  </button>
+                                  <button className="btn btn-ghost btn-sm" onClick={() => setAddExerciseFor(addExerciseFor === block.id ? null : block.id)}>
+                                    <PlusIcon size={11}/>Añadir ejercicio
+                                  </button>
+                                </div>
+                              </>
+                            )}
                           </div>
 
                           <div style={{ display: 'grid', gap: 5 }}>
@@ -798,16 +916,20 @@ export default function PlannerPage() {
                                     <div style={{ borderTop: '1px solid var(--border)' }}>
                                       {item.sets.length > 0 && (
                                         <>
-                                          <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 1fr 50px 1fr', gap: 8, padding: '5px 12px', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700 }}>
-                                            <div>SET</div><div>REPS</div><div>KG</div><div>RPE</div><div>DESCANSO</div>
+                                          <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 1fr 50px 1fr 22px', gap: 8, padding: '5px 12px', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700 }}>
+                                            <div>SET</div><div>REPS</div><div>KG</div><div>RPE</div><div>DESCANSO</div><div/>
                                           </div>
                                           {item.sets.map((s, si) => (
-                                            <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '28px 1fr 1fr 50px 1fr', gap: 8, padding: '5px 12px', alignItems: 'center', borderTop: '1px solid var(--border)', fontSize: 11 }}>
+                                            <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '28px 1fr 1fr 50px 1fr 22px', gap: 8, padding: '5px 12px', alignItems: 'center', borderTop: '1px solid var(--border)', fontSize: 11 }}>
                                               <span className="mono" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>{si + 1}</span>
                                               <span className="mono">{s.reps || '—'}</span>
                                               <span className="mono">{s.load != null ? `${s.load} kg` : '—'}</span>
                                               <span className="mono" style={{ color: s.rpe_target ? 'var(--vitta-blue)' : 'var(--text-muted)' }}>{s.rpe_target ?? '—'}</span>
                                               <span className="mono" style={{ color: 'var(--text-muted)' }}>{s.rest || '—'}</span>
+                                              <button onClick={e => { e.stopPropagation(); deleteSet(s.id, item.id, block.id); }}
+                                                style={{ background: 'transparent', border: 'none', color: '#D7474B', cursor: 'pointer', padding: '1px 0', opacity: 0.6, display: 'grid', placeItems: 'center' }}>
+                                                <XIcon size={11}/>
+                                              </button>
                                             </div>
                                           ))}
                                         </>
@@ -815,7 +937,6 @@ export default function PlannerPage() {
                                       {addSetFor === item.id ? (
                                         <AddSetForm
                                           exerciseId={item.id}
-                                          nextSortOrder={item.sets.length}
                                           onSaved={newSet => {
                                             setDaySessions(prev => prev.map(s => ({
                                               ...s,
@@ -828,9 +949,8 @@ export default function PlannerPage() {
                                                 } : b
                                               ),
                                             })));
-                                            setAddSetFor(null);
                                           }}
-                                          onCancel={() => setAddSetFor(null)}
+                                          onClose={() => setAddSetFor(null)}
                                         />
                                       ) : (
                                         <div style={{ padding: '5px 12px 7px' }}>
