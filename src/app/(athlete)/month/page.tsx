@@ -51,8 +51,9 @@ export default function MonthPage() {
       .eq('athlete_id', athleteId)
       .eq('year', year)
       .eq('month', month)
-      .single()
-      .then(({ data }) => {
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error) console.error('month_plans error:', error);
         setPlan(data?.plan ?? null);
         setLoading(false);
       });

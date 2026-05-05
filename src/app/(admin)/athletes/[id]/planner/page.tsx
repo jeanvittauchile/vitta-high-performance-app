@@ -1,5 +1,6 @@
 'use client';
-import { useState, useEffect, use, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { CATEGORIES, DAY_TYPES } from '@/lib/constants';
 import { getCategoryIcon, PlusIcon, CopyIcon, LayersIcon, ChevronLeft, ChevronRight, SparkleIcon } from '@/components/icons';
@@ -214,14 +215,16 @@ function AddExerciseForm({ blockId, onSaved, onCancel }: { blockId: string; onSa
 
 // ─── Main page ───────────────────────────────────────────────
 
-export default function PlannerPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+export default function PlannerPage() {
+  const params = useParams();
+  const id = params.id as string;
 
   const now = new Date();
   const [currentYear, setCurrentYear] = useState(now.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(now.getMonth() + 1);
 
   const [athlete, setAthlete] = useState<Athlete | null>(null);
+  const [athleteLoading, setAthleteLoading] = useState(true);
   const [monthPlan, setMonthPlan] = useState<DayType[][]>(defaultPlan());
   const [selectedDay, setSelectedDay] = useState<{ w: number; d: number } | null>(null);
   const [daySessions, setDaySessions] = useState<DbSession[]>([]);
@@ -231,9 +234,15 @@ export default function PlannerPage({ params }: { params: Promise<{ id: string }
 
   // ── Fetch athlete ──────────────────────────────────────────
   useEffect(() => {
+    if (!id) return;
+    setAthleteLoading(true);
     const supabase = createClient();
-    supabase.from('athletes').select('*').eq('id', id).single()
-      .then(({ data }) => { if (data) setAthlete(mapAthlete(data)); });
+    supabase.from('athletes').select('*').eq('id', id).maybeSingle()
+      .then(({ data, error }) => {
+        if (error) console.error('Athlete fetch error:', error);
+        if (data) setAthlete(mapAthlete(data));
+        setAthleteLoading(false);
+      });
   }, [id]);
 
   // ── Fetch month plan ───────────────────────────────────────
@@ -325,10 +334,18 @@ export default function PlannerPage({ params }: { params: Promise<{ id: string }
     ? new Date(selectedDate + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })
     : null;
 
-  if (!athlete) {
+  if (athleteLoading) {
     return (
       <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: 'var(--text-muted)', fontSize: 14 }}>
         Cargando...
+      </div>
+    );
+  }
+
+  if (!athlete) {
+    return (
+      <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: 'var(--text-muted)', fontSize: 14 }}>
+        Atleta no encontrado.
       </div>
     );
   }

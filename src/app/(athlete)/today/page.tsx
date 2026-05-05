@@ -198,8 +198,9 @@ export default function TodayPage() {
   const [activeExercise, setActiveExercise] = useState<{ ex: ExRow; catId: CategoryId } | null>(null);
 
   const fetchSession = useCallback(async () => {
-    if (!athleteId) return;
-    const today = new Date().toISOString().slice(0, 10);
+    if (!athleteId) { setLoading(false); return; }
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const supabase = createClient();
     const { data } = await supabase
       .from('sessions')
@@ -218,7 +219,7 @@ export default function TodayPage() {
       .eq('date', today)
       .order('created_at')
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (data) {
       const sess: SessRow = {
