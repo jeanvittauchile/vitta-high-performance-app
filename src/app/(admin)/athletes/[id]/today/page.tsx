@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase';
 import { CATEGORIES } from '@/lib/constants';
@@ -8,14 +8,23 @@ import { getCategoryIcon, ChevronLeft } from '@/components/icons';
 import LevelBadge from '@/components/badges/LevelBadge';
 import type { CategoryId, LevelId } from '@/lib/types';
 
-interface SetRow { id: string; reps: string | null; load: string | null; rpe_target: number | null; rest: string | null; sort_order: number; }
+interface SetRow { id: string; reps: string | null; load: number | null; rpe_target: number | null; rest: string | null; sort_order: number; }
 interface ExRow  { id: string; name: string; level: string | null; note: string | null; sort_order: number; sets: SetRow[]; }
 interface BlRow  { id: string; name: string; category: CategoryId; color: string | null; sort_order: number; session_exercises: ExRow[]; }
 interface SessRow { id: string; title: string; duration: number; rpe_target: number; session_blocks: BlRow[]; }
 
+function toISO(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 export default function AthleteToday() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const athleteId = pathname.split('/athletes/')[1]?.split('/')[0] ?? '';
+
+  // Use ?date= param if provided (when opened from admin planner for a specific day)
+  const dateParam = searchParams.get('date');
+  const targetDate = dateParam || toISO(new Date());
 
   const [session, setSession] = useState<SessRow | null>(null);
   const [athleteName, setAthleteName] = useState('');
@@ -23,8 +32,6 @@ export default function AthleteToday() {
 
   useEffect(() => {
     if (!athleteId) { setLoading(false); return; }
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const supabase = createClient();
 
     Promise.all([
@@ -42,7 +49,7 @@ export default function AthleteToday() {
           )
         `)
         .eq('athlete_id', athleteId)
-        .eq('date', today)
+        .eq('date', targetDate)
         .order('created_at')
         .limit(1)
         .maybeSingle(),
@@ -66,10 +73,12 @@ export default function AthleteToday() {
       }
       setLoading(false);
     });
-  }, [athleteId]);
+  }, [athleteId, targetDate]);
 
   const mainBlock = session?.session_blocks.find(b => !['movilidad','preventivos'].includes(b.category)) || session?.session_blocks[0];
   const mainCat   = mainBlock ? (CATEGORIES[mainBlock.category] || CATEGORIES.empuje) : CATEGORIES.empuje;
+
+  const dateLabel = new Date(targetDate + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
     <div style={{ padding: '20px 24px 28px', maxWidth: 860, margin: '0 auto' }}>
@@ -78,15 +87,15 @@ export default function AthleteToday() {
           <ChevronLeft size={14}/>Volver al planificador
         </Link>
         <span style={{ color: 'var(--border)' }}>·</span>
-        <span style={{ fontSize: 13, fontWeight: 600 }}>{athleteName || '…'} · Vista de hoy</span>
+        <span style={{ fontSize: 13, fontWeight: 600 }}>{athleteName || '…'} · {dateLabel}</span>
       </div>
 
       {loading ? (
         <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>Cargando...</div>
       ) : !session ? (
         <div className="card" style={{ padding: 40, textAlign: 'center' }}>
-          <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>Sin sesión hoy</div>
-          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{athleteName} no tiene sesión planificada para hoy.</div>
+          <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>Sin sesión planificada</div>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{athleteName} no tiene sesión para {dateLabel}.</div>
         </div>
       ) : (
         <>
@@ -112,9 +121,9 @@ export default function AthleteToday() {
             <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 14 }}>{session.title}</div>
             <div style={{ display: 'flex', gap: 20 }}>
               {[
-                { label: 'Duración', value: `${session.duration} min` },
+                { label: 'Duración',     value: `${session.duration} min` },
                 { label: 'RPE objetivo', value: session.rpe_target },
-                { label: 'Bloques', value: session.session_blocks.length },
+                { label: 'Bloques',      value: session.session_blocks.length },
               ].map(s => (
                 <div key={s.label}>
                   <div style={{ fontSize: 18, fontWeight: 700 }}>{s.value}</div>
@@ -164,7 +173,7 @@ export default function AthleteToday() {
                               <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '32px 80px 80px 60px 1fr', gap: 8, padding: '6px 12px', alignItems: 'center', borderTop: '1px solid var(--border)', fontSize: 12 }}>
                                 <span className="mono" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>{si + 1}</span>
                                 <span className="mono">{s.reps || '—'}</span>
-                                <span className="mono">{s.load ? `${s.load} kg` : '—'}</span>
+                                <span className="mono">{s.load != null ? `${s.load} kg` : '—'}</span>
                                 <span className="mono" style={{ color: s.rpe_target ? 'var(--vitta-blue)' : 'var(--text-muted)' }}>{s.rpe_target ?? '—'}</span>
                                 <span className="mono" style={{ color: 'var(--text-muted)' }}>{s.rest || '—'}</span>
                               </div>

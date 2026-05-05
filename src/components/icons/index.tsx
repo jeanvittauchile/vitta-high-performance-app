@@ -234,6 +234,14 @@ export const TrashIcon = (p: IconProps) => (
     <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
   </Icon>
 );
+export const PencilIcon = (p: IconProps) => <Icon {...p} d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>;
+export const ExternalLinkIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/>
+    <polyline points="15 3 21 3 21 9"/>
+    <line x1="10" y1="14" x2="21" y2="3"/>
+  </Icon>
+);
 
 // ─── Category icon router ────────────────────────────────
 export function getCategoryIcon(catId: string) {

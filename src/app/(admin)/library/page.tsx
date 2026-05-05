@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase';
 import { CATEGORIES, LEVELS } from '@/lib/constants';
-import { getCategoryIcon, PlusIcon, SearchIcon, CopyIcon, XIcon } from '@/components/icons';
+import { getCategoryIcon, PlusIcon, SearchIcon, CopyIcon, XIcon, VideoIcon, ExternalLinkIcon } from '@/components/icons';
 import LevelBadge from '@/components/badges/LevelBadge';
 import type { CategoryId, LevelId } from '@/lib/types';
 
@@ -14,6 +14,85 @@ interface LibExercise {
   level: LevelId;
   muscle: string;
   equipment: string;
+  video_url: string | null;
+}
+
+// ─── Exercise Detail Modal ───────────────────────────────────
+
+function ExerciseDetailModal({ exercise, onClose }: { exercise: LibExercise; onClose: () => void }) {
+  const c = CATEGORIES[exercise.category];
+  const Ic = getCategoryIcon(exercise.category);
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()}
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(14,25,54,0.55)', display: 'grid', placeItems: 'center' }}>
+      <div className="card" style={{ width: 480, padding: 0, overflow: 'hidden' }}>
+        {/* Header */}
+        <div style={{ padding: '18px 20px', background: `${c.color}12`, borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: `${c.color}22`, color: c.color, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+              <Ic size={20} stroke="currentColor"/>
+            </div>
+            <div>
+              <div style={{ fontSize: 17, fontWeight: 700 }}>{exercise.name}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{c.label}</div>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+            <XIcon size={18}/>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: '18px 20px', display: 'grid', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <InfoBox label="Nivel"><LevelBadge level={exercise.level} size="sm"/></InfoBox>
+            <InfoBox label="Categoría">
+              <span style={{ fontSize: 12, fontWeight: 600, color: c.color }}>{c.label}</span>
+            </InfoBox>
+            <InfoBox label="Músculo principal">
+              <span style={{ fontSize: 12 }}>{exercise.muscle}</span>
+            </InfoBox>
+            <InfoBox label="Equipamiento">
+              <span style={{ fontSize: 12 }}>{exercise.equipment}</span>
+            </InfoBox>
+          </div>
+
+          {exercise.video_url ? (
+            <a
+              href={exercise.video_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '10px 14px', borderRadius: 8,
+                background: 'rgba(46,107,214,0.08)',
+                border: '1px solid rgba(46,107,214,0.25)',
+                color: 'var(--vitta-blue)', textDecoration: 'none',
+                fontSize: 13, fontWeight: 600,
+              }}>
+              <VideoIcon size={16} stroke="currentColor"/>
+              Ver video de referencia
+              <ExternalLinkIcon size={13} style={{ marginLeft: 'auto', opacity: 0.7 }}/>
+            </a>
+          ) : (
+            <div style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-muted)' }}>
+              Sin video de referencia.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoBox({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '8px 10px', border: '1px solid var(--border)' }}>
+      <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 4 }}>{label}</div>
+      {children}
+    </div>
+  );
 }
 
 // ─── New Exercise Modal ──────────────────────────────────────
@@ -25,6 +104,7 @@ function NewExerciseModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [level, setLevel] = useState<LevelId>('basico');
   const [muscle, setMuscle] = useState('');
   const [equipment, setEquipment] = useState('');
+  const [videoUrl, setVideoUrl] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -53,6 +133,7 @@ function NewExerciseModal({ onClose, onCreated }: { onClose: () => void; onCreat
       level,
       muscle: muscle.trim() || null,
       equipment: equipment.trim() || null,
+      video_url: videoUrl.trim() || null,
     });
     setSaving(false);
     if (err) { setError(err.message); return; }
@@ -64,6 +145,10 @@ function NewExerciseModal({ onClose, onCreated }: { onClose: () => void; onCreat
     width: '100%', padding: '8px 10px', borderRadius: 8,
     border: '1px solid var(--border)', background: 'var(--surface-2)',
     fontSize: 13, fontFamily: 'inherit', color: 'var(--text)', boxSizing: 'border-box',
+  };
+  const lbl: React.CSSProperties = {
+    fontSize: 10, fontWeight: 700, letterSpacing: '0.06em',
+    textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: 5,
   };
 
   return (
@@ -78,34 +163,44 @@ function NewExerciseModal({ onClose, onCreated }: { onClose: () => void; onCreat
         </div>
         <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 14 }}>
           <div>
-            <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>Nombre *</label>
+            <label style={lbl}>Nombre *</label>
             <input value={name} onChange={e => handleNameChange(e.target.value)} placeholder="ej. Press banca agarre cerrado" style={inp} required/>
           </div>
           <div>
-            <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>Slug (ID único)</label>
+            <label style={lbl}>Slug (ID único)</label>
             <input value={slug} onChange={e => setSlug(e.target.value)} placeholder="ex_press_banca_cerrado" style={{ ...inp, fontFamily: 'monospace', fontSize: 12 }}/>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
-              <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>Categoría</label>
+              <label style={lbl}>Categoría</label>
               <select value={category} onChange={e => setCategory(e.target.value as CategoryId)} style={inp}>
                 {Object.values(CATEGORIES).map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
               </select>
             </div>
             <div>
-              <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>Nivel</label>
+              <label style={lbl}>Nivel</label>
               <select value={level} onChange={e => setLevel(e.target.value as LevelId)} style={inp}>
                 {Object.values(LEVELS).map(L => <option key={L.id} value={L.id}>{L.label}</option>)}
               </select>
             </div>
           </div>
           <div>
-            <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>Músculo principal</label>
+            <label style={lbl}>Músculo principal</label>
             <input value={muscle} onChange={e => setMuscle(e.target.value)} placeholder="ej. Pectoral · Tríceps" style={inp}/>
           </div>
           <div>
-            <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>Equipamiento</label>
+            <label style={lbl}>Equipamiento</label>
             <input value={equipment} onChange={e => setEquipment(e.target.value)} placeholder="ej. Barra + banco" style={inp}/>
+          </div>
+          <div>
+            <label style={lbl}>URL de video (YouTube, Vimeo…)</label>
+            <input
+              type="url"
+              value={videoUrl}
+              onChange={e => setVideoUrl(e.target.value)}
+              placeholder="https://www.youtube.com/watch?v=..."
+              style={inp}
+            />
           </div>
           {error && (
             <div style={{ fontSize: 12, color: 'var(--red)', padding: '7px 10px', background: 'rgba(215,71,75,0.08)', borderRadius: 6 }}>{error}</div>
@@ -136,53 +231,35 @@ function AddToSessionModal({ exercise, onClose }: { exercise: LibExercise; onClo
 
   useEffect(() => {
     const supabase = createClient();
-    supabase.from('athletes').select('id, name').order('name')
-      .then(({ data }) => setAthletes(data || []));
+    supabase.from('athletes').select('id, name').order('name').then(({ data }) => setAthletes(data || []));
   }, []);
 
   useEffect(() => {
     if (!athleteId) { setSessions([]); setSessionId(''); setBlocks([]); setBlockId(''); return; }
     const supabase = createClient();
-    const since = new Date();
-    since.setDate(since.getDate() - 60);
-    const sinceISO = since.toISOString().slice(0, 10);
-    supabase.from('sessions')
-      .select('id, title, date')
-      .eq('athlete_id', athleteId)
-      .gte('date', sinceISO)
-      .order('date', { ascending: false })
+    const since = new Date(); since.setDate(since.getDate() - 60);
+    supabase.from('sessions').select('id, title, date').eq('athlete_id', athleteId)
+      .gte('date', since.toISOString().slice(0, 10)).order('date', { ascending: false })
       .then(({ data }) => { setSessions(data || []); setSessionId(''); setBlocks([]); setBlockId(''); });
   }, [athleteId]);
 
   useEffect(() => {
     if (!sessionId) { setBlocks([]); setBlockId(''); return; }
     const supabase = createClient();
-    supabase.from('session_blocks')
-      .select('id, name')
-      .eq('session_id', sessionId)
-      .order('sort_order')
+    supabase.from('session_blocks').select('id, name').eq('session_id', sessionId).order('sort_order')
       .then(({ data }) => { setBlocks(data || []); setBlockId(''); });
   }, [sessionId]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!blockId) { setError('Selecciona un bloque.'); return; }
-    setSaving(true);
-    setError('');
+    setSaving(true); setError('');
     const supabase = createClient();
-    const { data: existing } = await supabase
-      .from('session_exercises')
-      .select('sort_order')
-      .eq('block_id', blockId)
-      .order('sort_order', { ascending: false })
-      .limit(1);
+    const { data: existing } = await supabase.from('session_exercises').select('sort_order').eq('block_id', blockId).order('sort_order', { ascending: false }).limit(1);
     const nextSort = ((existing?.[0]?.sort_order ?? -1) as number) + 1;
     const { error: err } = await supabase.from('session_exercises').insert({
-      block_id: blockId,
-      exercise_id: exercise.dbId,
-      name: exercise.name,
-      level: exercise.level,
-      sort_order: nextSort,
+      block_id: blockId, exercise_id: exercise.dbId,
+      name: exercise.name, level: exercise.level, sort_order: nextSort,
     });
     setSaving(false);
     if (err) { setError(err.message); return; }
@@ -194,6 +271,7 @@ function AddToSessionModal({ exercise, onClose }: { exercise: LibExercise; onClo
     border: '1px solid var(--border)', background: 'var(--surface-2)',
     fontSize: 13, fontFamily: 'inherit', color: 'var(--text)', boxSizing: 'border-box',
   };
+  const lbl: React.CSSProperties = { fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: 5 };
 
   return (
     <div onClick={e => e.target === e.currentTarget && onClose()}
@@ -204,43 +282,33 @@ function AddToSessionModal({ exercise, onClose }: { exercise: LibExercise; onClo
             <div style={{ fontSize: 15, fontWeight: 700 }}>Agregar a sesión</div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{exercise.name}</div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-            <XIcon size={18}/>
-          </button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><XIcon size={18}/></button>
         </div>
         <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 14 }}>
           <div>
-            <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>Atleta</label>
+            <label style={lbl}>Atleta</label>
             <select value={athleteId} onChange={e => setAthleteId(e.target.value)} style={sel} required>
               <option value="">Selecciona un atleta…</option>
               {athletes.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           </div>
           <div>
-            <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>Sesión (últimos 60 días)</label>
+            <label style={lbl}>Sesión (últimos 60 días)</label>
             <select value={sessionId} onChange={e => setSessionId(e.target.value)} style={sel} disabled={!athleteId} required>
               <option value="">Selecciona una sesión…</option>
-              {sessions.map(s => (
-                <option key={s.id} value={s.id}>{s.date} · {s.title}</option>
-              ))}
+              {sessions.map(s => <option key={s.id} value={s.id}>{s.date} · {s.title}</option>)}
             </select>
-            {athleteId && sessions.length === 0 && (
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Sin sesiones recientes para este atleta.</div>
-            )}
+            {athleteId && sessions.length === 0 && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Sin sesiones recientes.</div>}
           </div>
           <div>
-            <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>Bloque</label>
+            <label style={lbl}>Bloque</label>
             <select value={blockId} onChange={e => setBlockId(e.target.value)} style={sel} disabled={!sessionId} required>
               <option value="">Selecciona un bloque…</option>
               {blocks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
-            {sessionId && blocks.length === 0 && (
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Esta sesión no tiene bloques.</div>
-            )}
+            {sessionId && blocks.length === 0 && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Esta sesión no tiene bloques.</div>}
           </div>
-          {error && (
-            <div style={{ fontSize: 12, color: 'var(--red)', padding: '7px 10px', background: 'rgba(215,71,75,0.08)', borderRadius: 6 }}>{error}</div>
-          )}
+          {error && <div style={{ fontSize: 12, color: 'var(--red)', padding: '7px 10px', background: 'rgba(215,71,75,0.08)', borderRadius: 6 }}>{error}</div>}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button type="button" onClick={onClose} className="btn btn-ghost">Cancelar</button>
             <button type="submit" disabled={saving || !blockId} className="btn btn-primary">
@@ -263,12 +331,13 @@ export default function LibraryPage() {
   const [activeLevel, setActiveLevel] = useState<'all' | LevelId>('all');
   const [showNewExModal, setShowNewExModal] = useState(false);
   const [addToSessionEx, setAddToSessionEx] = useState<LibExercise | null>(null);
+  const [detailEx, setDetailEx] = useState<LibExercise | null>(null);
 
   const fetchExercises = useCallback(() => {
     const supabase = createClient();
     supabase
       .from('exercises')
-      .select('id, slug, name, category, level, muscle, equipment')
+      .select('id, slug, name, category, level, muscle, equipment, video_url')
       .order('category')
       .then(({ data, error }) => {
         if (!error && data) {
@@ -280,6 +349,7 @@ export default function LibraryPage() {
             level:     e.level as LevelId,
             muscle:    e.muscle || '—',
             equipment: e.equipment || '—',
+            video_url: e.video_url || null,
           })));
         }
         setLoading(false);
@@ -306,16 +376,13 @@ export default function LibraryPage() {
   return (
     <div style={{ padding: '20px 24px 28px' }}>
       {showNewExModal && (
-        <NewExerciseModal
-          onClose={() => setShowNewExModal(false)}
-          onCreated={() => { fetchExercises(); }}
-        />
+        <NewExerciseModal onClose={() => setShowNewExModal(false)} onCreated={() => fetchExercises()}/>
       )}
       {addToSessionEx && (
-        <AddToSessionModal
-          exercise={addToSessionEx}
-          onClose={() => setAddToSessionEx(null)}
-        />
+        <AddToSessionModal exercise={addToSessionEx} onClose={() => setAddToSessionEx(null)}/>
+      )}
+      {detailEx && (
+        <ExerciseDetailModal exercise={detailEx} onClose={() => setDetailEx(null)}/>
       )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 16 }}>
@@ -384,26 +451,50 @@ export default function LibraryPage() {
                     <div style={{ fontSize: 14, fontWeight: 700 }}>{c.label}</div>
                     <span className="mono muted" style={{ fontSize: 11 }}>· {exs.length} {exs.length === 1 ? 'ejercicio' : 'ejercicios'}</span>
                   </div>
-                  <button className="btn btn-ghost btn-sm">Ver categoría</button>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                   {exs.map(ex => (
-                    <div key={ex.id} style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'start' }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600 }}>{ex.name}</div>
-                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 5, flexWrap: 'wrap' }}>
+                    <div key={ex.id} style={{
+                      padding: '10px 12px', borderRadius: 8,
+                      background: 'var(--surface-2)', border: '1px solid var(--border)',
+                      display: 'flex', flexDirection: 'column', gap: 6,
+                    }}>
+                      {/* Name + level */}
+                      <div>
+                        <button
+                          onClick={() => setDetailEx(ex)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: 0, fontFamily: 'inherit', color: 'var(--text)', fontSize: 13, fontWeight: 600 }}
+                        >
+                          {ex.name}
+                        </button>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
                           <LevelBadge level={ex.level} size="sm"/>
+                          {ex.video_url && (
+                            <a href={ex.video_url} target="_blank" rel="noopener noreferrer"
+                              title="Ver video"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 6px', borderRadius: 4, background: 'rgba(46,107,214,0.10)', color: 'var(--vitta-blue)', fontSize: 9, fontWeight: 700, textDecoration: 'none', letterSpacing: '0.04em' }}>
+                              <VideoIcon size={9} stroke="currentColor"/>VIDEO
+                            </a>
+                          )}
                         </div>
-                        <div className="muted" style={{ fontSize: 10, marginTop: 5 }}>{ex.muscle} · {ex.equipment}</div>
+                        <div className="muted" style={{ fontSize: 10, marginTop: 4 }}>{ex.muscle} · {ex.equipment}</div>
                       </div>
-                      <button
-                        onClick={() => setAddToSessionEx(ex)}
-                        title="Agregar a sesión"
-                        style={{ background: 'var(--vitta-blue)', border: 'none', color: '#fff', borderRadius: 6, width: 26, height: 26, display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0 }}
-                      >
-                        <PlusIcon size={13}/>
-                      </button>
+
+                      {/* Actions */}
+                      <div style={{ display: 'flex', gap: 5, marginTop: 'auto' }}>
+                        <button
+                          onClick={() => setDetailEx(ex)}
+                          style={{ flex: 1, padding: '5px 0', borderRadius: 6, border: '1px solid var(--border)', background: 'white', color: 'var(--text-muted)', fontSize: 11, fontFamily: 'inherit', cursor: 'pointer', fontWeight: 500 }}>
+                          Ver detalles
+                        </button>
+                        <button
+                          onClick={() => setAddToSessionEx(ex)}
+                          title="Agregar a sesión"
+                          style={{ background: 'var(--vitta-blue)', border: 'none', color: '#fff', borderRadius: 6, width: 28, height: 28, display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                          <PlusIcon size={13}/>
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
