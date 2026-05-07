@@ -12,7 +12,7 @@ import type { Athlete, DayType, CategoryId, LevelId } from '@/lib/types';
 interface DbSet {
   id: string;
   reps: string | null;
-  load: number | null;
+  load: string | null;
   rpe_target: number | null;
   rest: string | null;
   sort_order: number;
@@ -308,9 +308,9 @@ function AddExerciseForm({ blockId, category, onSaved, onCancel }: {
     if (exData && draftSets.length > 0) {
       const { error: setsErr } = await supabase.from('sets').insert(
         draftSets.map((s, i) => ({
-          session_exercise_id: exData.id,
+          session_ex_id: exData.id,
           reps: s.reps || null,
-          load: s.load ? Number(s.load) : null,
+          load: s.load || null,
           rpe_target: s.rpe ? Number(s.rpe) : null,
           rest: s.rest || null,
           done: false,
@@ -422,13 +422,13 @@ function AddSetForm({ exerciseId, onSaved, onClose }: {
     setError('');
     const supabase = createClient();
     const { data: existing } = await supabase.from('sets')
-      .select('sort_order').eq('session_exercise_id', exerciseId)
+      .select('sort_order').eq('session_ex_id', exerciseId)
       .order('sort_order', { ascending: false }).limit(1);
     const nextSort = ((existing?.[0]?.sort_order ?? -1) as number) + 1;
     const { data, error: err } = await supabase.from('sets').insert({
-      session_exercise_id: exerciseId,
+      session_ex_id: exerciseId,
       reps: reps || null,
-      load: load ? Number(load) : null,
+      load: load || null,
       rpe_target: rpe ? Number(rpe) : null,
       rest: rest || null,
       done: false,
@@ -643,7 +643,7 @@ export default function PlannerPage() {
       const { data: exercises } = await supabase.from('session_exercises').select('id').in('block_id', blockIds);
       if (exercises?.length) {
         const exIds = exercises.map((e: any) => e.id);
-        await supabase.from('sets').delete().in('session_exercise_id', exIds);
+        await supabase.from('sets').delete().in('session_ex_id', exIds);
         await supabase.from('session_exercises').delete().in('id', exIds);
       }
       await supabase.from('session_blocks').delete().in('id', blockIds);
@@ -667,7 +667,7 @@ export default function PlannerPage() {
     const { data: exercises } = await supabase.from('session_exercises').select('id').eq('block_id', blockId);
     if (exercises?.length) {
       const exIds = exercises.map((e: any) => e.id);
-      await supabase.from('sets').delete().in('session_exercise_id', exIds);
+      await supabase.from('sets').delete().in('session_ex_id', exIds);
       await supabase.from('session_exercises').delete().in('id', exIds);
     }
     await supabase.from('session_blocks').delete().eq('id', blockId);
@@ -680,7 +680,7 @@ export default function PlannerPage() {
   async function deleteExercise(exerciseId: string, blockId: string) {
     if (!confirm('¿Eliminar este ejercicio?')) return;
     const supabase = createClient();
-    await supabase.from('sets').delete().eq('session_exercise_id', exerciseId);
+    await supabase.from('sets').delete().eq('session_ex_id', exerciseId);
     await supabase.from('session_exercises').delete().eq('id', exerciseId);
     setDaySessions(prev => prev.map(s => ({
       ...s,
@@ -1028,7 +1028,7 @@ export default function PlannerPage() {
                                 {block.session_exercises.map((item, idx) => {
                                   const isExpanded = expandedEx.has(item.id);
                                   const setsSummary = item.sets.length > 0
-                                    ? `${item.sets.length}×${item.sets[0].reps || '—'}` + (item.sets[0].load != null ? ` · ${item.sets[0].load}kg` : '')
+                                    ? `${item.sets.length}×${item.sets[0].reps || '—'}` + (item.sets[0].load ? ` · ${item.sets[0].load}kg` : '')
                                     : null;
                                   return (
                                     <div key={item.id} style={{ background: 'white', borderRadius: 6, border: '1px solid var(--border)', overflow: 'hidden' }}>
@@ -1069,7 +1069,7 @@ export default function PlannerPage() {
                                                 <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '28px 1fr 1fr 50px 1fr 22px', gap: 8, padding: '5px 12px', alignItems: 'center', borderTop: '1px solid var(--border)', fontSize: 11 }}>
                                                   <span className="mono" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>{si + 1}</span>
                                                   <span className="mono">{s.reps || '—'}</span>
-                                                  <span className="mono">{s.load != null ? `${s.load} kg` : '—'}</span>
+                                                  <span className="mono">{s.load ? `${s.load} kg` : '—'}</span>
                                                   <span className="mono" style={{ color: s.rpe_target ? 'var(--vitta-blue)' : 'var(--text-muted)' }}>{s.rpe_target ?? '—'}</span>
                                                   <span className="mono" style={{ color: 'var(--text-muted)' }}>{s.rest || '—'}</span>
                                                   <button onClick={e => { e.stopPropagation(); deleteSet(s.id, item.id, block.id); }}
