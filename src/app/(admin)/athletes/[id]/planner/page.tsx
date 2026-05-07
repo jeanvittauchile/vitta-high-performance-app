@@ -520,6 +520,8 @@ export default function PlannerPage() {
   const [addExerciseFor, setAddExerciseFor] = useState<string | null>(null);
   const [expandedEx, setExpandedEx] = useState<Set<string>>(new Set());
   const [addSetFor, setAddSetFor] = useState<string | null>(null);
+  const [doneBlocks, setDoneBlocks] = useState<Set<string>>(new Set());
+  const [collapsedBlocks, setCollapsedBlocks] = useState<Set<string>>(new Set());
 
   // ── Fetch athlete ──────────────────────────────────────────
   useEffect(() => {
@@ -593,9 +595,34 @@ export default function PlannerPage() {
     setDaySessions(sessions);
     setExpandedEx(new Set());
     setAddSetFor(null);
+    setDoneBlocks(new Set());
+    setCollapsedBlocks(new Set());
   }, [id, selectedDay, currentYear, currentMonth]);
 
   useEffect(() => { fetchDaySessions(); }, [fetchDaySessions]);
+
+  // ── Toggle block done / collapse ──────────────────────────
+  function toggleBlockDone(blockId: string) {
+    setDoneBlocks(prev => {
+      const n = new Set(prev);
+      if (n.has(blockId)) {
+        n.delete(blockId);
+        setCollapsedBlocks(pb => { const nb = new Set(pb); nb.delete(blockId); return nb; });
+      } else {
+        n.add(blockId);
+        setCollapsedBlocks(pb => { const nb = new Set(pb); nb.add(blockId); return nb; });
+      }
+      return n;
+    });
+  }
+
+  function toggleBlockCollapse(blockId: string) {
+    setCollapsedBlocks(prev => {
+      const n = new Set(prev);
+      if (n.has(blockId)) n.delete(blockId); else n.add(blockId);
+      return n;
+    });
+  }
 
   // ── Toggle exercise expand ─────────────────────────────────
   function toggleEx(exId: string) {
@@ -911,9 +938,17 @@ export default function PlannerPage() {
                     {session.session_blocks.map((block, bi) => {
                       const Ic = getCategoryIcon(block.category);
                       const blockColor = block.color || CATEGORIES[block.category]?.color || '#2E6BD6';
+                      const isDone = doneBlocks.has(block.id);
+                      const isCollapsed = isDone || collapsedBlocks.has(block.id);
                       return (
-                        <div key={block.id} style={{ background: 'var(--surface-2)', borderRadius: 10, padding: 12, border: '1px solid var(--border)' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+                        <div key={block.id} style={{
+                          background: isDone ? 'rgba(43,182,115,0.06)' : 'var(--surface-2)',
+                          borderRadius: 10,
+                          border: `1px solid ${isDone ? 'rgba(43,182,115,0.3)' : 'var(--border)'}`,
+                          overflow: 'hidden',
+                        }}>
+                          {/* Block header */}
+                          <div style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
                             {editBlockId === block.id ? (
                               <EditBlockForm
                                 block={block}
@@ -926,18 +961,46 @@ export default function PlannerPage() {
                                 }}
                                 onCancel={() => setEditBlockId(null)}
                               />
+                            ) : isDone ? (
+                              <>
+                                <div style={{ width: 26, height: 26, borderRadius: 13, background: '#2BB673', color: '#fff', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                                  <CheckIcon size={13} stroke="#fff" strokeWidth={2.5}/>
+                                </div>
+                                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, overflow: 'hidden' }}>
+                                  <span style={{ fontSize: 10, fontWeight: 700, color: '#2BB673', letterSpacing: '0.08em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                                    BLQ {String.fromCharCode(65 + bi)}
+                                  </span>
+                                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {block.name}
+                                  </span>
+                                  <span style={{ fontSize: 10, fontWeight: 600, color: '#2BB673', background: 'rgba(43,182,115,0.12)', padding: '1px 6px', borderRadius: 4, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                    ✓ Completado
+                                  </span>
+                                  <span style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                    {block.session_exercises.length} ejerc.
+                                  </span>
+                                </div>
+                                <button onClick={() => toggleBlockDone(block.id)}
+                                  style={{ background: 'transparent', border: '1px solid rgba(43,182,115,0.4)', borderRadius: 6, color: '#2BB673', cursor: 'pointer', padding: '4px 10px', fontSize: 11, fontWeight: 600, fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                  Reabrir
+                                </button>
+                              </>
                             ) : (
                               <>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  <div style={{ width: 26, height: 26, borderRadius: 6, background: `${blockColor}22`, color: blockColor, display: 'grid', placeItems: 'center' }}>
+                                <button onClick={() => toggleBlockCollapse(block.id)}
+                                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 3px', color: 'var(--text-muted)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                                  <ChevronDown size={14} style={{ transition: 'transform 0.15s', transform: isCollapsed ? 'rotate(-90deg)' : 'none' }}/>
+                                </button>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                                  <div style={{ width: 26, height: 26, borderRadius: 6, background: `${blockColor}22`, color: blockColor, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
                                     <Ic size={13} stroke="currentColor"/>
                                   </div>
-                                  <div>
+                                  <div style={{ minWidth: 0 }}>
                                     <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em' }}>BLOQUE {String.fromCharCode(65 + bi)}</span>
                                     <span style={{ fontSize: 13, fontWeight: 600, marginLeft: 6 }}>{block.name}</span>
                                   </div>
                                 </div>
-                                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
                                   <button onClick={() => setEditBlockId(block.id)} title="Editar bloque"
                                     style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '3px 5px', borderRadius: 5 }}>
                                     <PencilIcon size={12}/>
@@ -949,112 +1012,119 @@ export default function PlannerPage() {
                                   <button className="btn btn-ghost btn-sm" onClick={() => setAddExerciseFor(addExerciseFor === block.id ? null : block.id)}>
                                     <PlusIcon size={11}/>Añadir ejercicio
                                   </button>
+                                  <button onClick={() => toggleBlockDone(block.id)}
+                                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 9px', borderRadius: 6, border: '1px solid rgba(43,182,115,0.45)', background: 'transparent', color: '#2BB673', cursor: 'pointer', fontSize: 11, fontWeight: 700, fontFamily: 'inherit' }}>
+                                    <CheckIcon size={11} stroke="#2BB673" strokeWidth={2.5}/>OK
+                                  </button>
                                 </div>
                               </>
                             )}
                           </div>
 
-                          <div style={{ display: 'grid', gap: 5 }}>
-                            {block.session_exercises.map((item, idx) => {
-                              const isExpanded = expandedEx.has(item.id);
-                              const setsSummary = item.sets.length > 0
-                                ? `${item.sets.length}×${item.sets[0].reps || '—'}` + (item.sets[0].load != null ? ` · ${item.sets[0].load}kg` : '')
-                                : null;
-                              return (
-                                <div key={item.id} style={{ background: 'white', borderRadius: 6, border: '1px solid var(--border)', overflow: 'hidden' }}>
-                                  {/* Exercise header row (clickable to expand) */}
-                                  <div
-                                    style={{ display: 'grid', gridTemplateColumns: '20px 1fr auto auto', gap: 8, alignItems: 'center', padding: '8px 10px', fontSize: 12, cursor: 'pointer' }}
-                                    onClick={() => toggleEx(item.id)}
-                                  >
-                                    <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                                      {String.fromCharCode(65 + bi)}{idx + 1}
-                                    </span>
-                                    <div>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                                        <span style={{ fontWeight: 600 }}>{item.name}</span>
-                                        {item.level && <LevelBadge level={item.level} size="sm"/>}
-                                        {setsSummary && (
-                                          <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', background: 'var(--surface-2)', padding: '1px 5px', borderRadius: 4 }}>
-                                            {setsSummary}
-                                          </span>
-                                        )}
-                                      </div>
-                                      {item.note && <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>{item.note}</div>}
-                                    </div>
-                                    <button onClick={e => { e.stopPropagation(); deleteExercise(item.id, block.id); }}
-                                      style={{ background: 'transparent', border: 'none', color: '#D7474B', cursor: 'pointer', padding: '2px 4px', opacity: 0.7 }}>
-                                      <TrashIcon size={13}/>
-                                    </button>
-                                    <ChevronDown size={14} style={{ color: 'var(--text-muted)', transition: 'transform 0.15s', transform: isExpanded ? 'rotate(180deg)' : 'none', flexShrink: 0 }}/>
-                                  </div>
-
-                                  {/* Expanded: sets table + add set */}
-                                  {isExpanded && (
-                                    <div style={{ borderTop: '1px solid var(--border)' }}>
-                                      {item.sets.length > 0 && (
-                                        <>
-                                          <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 1fr 50px 1fr 22px', gap: 8, padding: '5px 12px', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700 }}>
-                                            <div>SET</div><div>REPS</div><div>KG</div><div>RPE</div><div>DESCANSO</div><div/>
+                          {/* Collapsible content */}
+                          {!isCollapsed && (
+                            <div style={{ borderTop: '1px solid var(--border)', padding: '10px 12px 12px' }}>
+                              <div style={{ display: 'grid', gap: 5 }}>
+                                {block.session_exercises.map((item, idx) => {
+                                  const isExpanded = expandedEx.has(item.id);
+                                  const setsSummary = item.sets.length > 0
+                                    ? `${item.sets.length}×${item.sets[0].reps || '—'}` + (item.sets[0].load != null ? ` · ${item.sets[0].load}kg` : '')
+                                    : null;
+                                  return (
+                                    <div key={item.id} style={{ background: 'white', borderRadius: 6, border: '1px solid var(--border)', overflow: 'hidden' }}>
+                                      <div
+                                        style={{ display: 'grid', gridTemplateColumns: '20px 1fr auto auto', gap: 8, alignItems: 'center', padding: '8px 10px', fontSize: 12, cursor: 'pointer' }}
+                                        onClick={() => toggleEx(item.id)}
+                                      >
+                                        <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                                          {String.fromCharCode(65 + bi)}{idx + 1}
+                                        </span>
+                                        <div>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                            <span style={{ fontWeight: 600 }}>{item.name}</span>
+                                            {item.level && <LevelBadge level={item.level} size="sm"/>}
+                                            {setsSummary && (
+                                              <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', background: 'var(--surface-2)', padding: '1px 5px', borderRadius: 4 }}>
+                                                {setsSummary}
+                                              </span>
+                                            )}
                                           </div>
-                                          {item.sets.map((s, si) => (
-                                            <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '28px 1fr 1fr 50px 1fr 22px', gap: 8, padding: '5px 12px', alignItems: 'center', borderTop: '1px solid var(--border)', fontSize: 11 }}>
-                                              <span className="mono" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>{si + 1}</span>
-                                              <span className="mono">{s.reps || '—'}</span>
-                                              <span className="mono">{s.load != null ? `${s.load} kg` : '—'}</span>
-                                              <span className="mono" style={{ color: s.rpe_target ? 'var(--vitta-blue)' : 'var(--text-muted)' }}>{s.rpe_target ?? '—'}</span>
-                                              <span className="mono" style={{ color: 'var(--text-muted)' }}>{s.rest || '—'}</span>
-                                              <button onClick={e => { e.stopPropagation(); deleteSet(s.id, item.id, block.id); }}
-                                                style={{ background: 'transparent', border: 'none', color: '#D7474B', cursor: 'pointer', padding: '1px 0', opacity: 0.6, display: 'grid', placeItems: 'center' }}>
-                                                <XIcon size={11}/>
+                                          {item.note && <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>{item.note}</div>}
+                                        </div>
+                                        <button onClick={e => { e.stopPropagation(); deleteExercise(item.id, block.id); }}
+                                          style={{ background: 'transparent', border: 'none', color: '#D7474B', cursor: 'pointer', padding: '2px 4px', opacity: 0.7 }}>
+                                          <TrashIcon size={13}/>
+                                        </button>
+                                        <ChevronDown size={14} style={{ color: 'var(--text-muted)', transition: 'transform 0.15s', transform: isExpanded ? 'rotate(180deg)' : 'none', flexShrink: 0 }}/>
+                                      </div>
+
+                                      {isExpanded && (
+                                        <div style={{ borderTop: '1px solid var(--border)' }}>
+                                          {item.sets.length > 0 && (
+                                            <>
+                                              <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 1fr 50px 1fr 22px', gap: 8, padding: '5px 12px', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700 }}>
+                                                <div>SET</div><div>REPS</div><div>KG</div><div>RPE</div><div>DESCANSO</div><div/>
+                                              </div>
+                                              {item.sets.map((s, si) => (
+                                                <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '28px 1fr 1fr 50px 1fr 22px', gap: 8, padding: '5px 12px', alignItems: 'center', borderTop: '1px solid var(--border)', fontSize: 11 }}>
+                                                  <span className="mono" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>{si + 1}</span>
+                                                  <span className="mono">{s.reps || '—'}</span>
+                                                  <span className="mono">{s.load != null ? `${s.load} kg` : '—'}</span>
+                                                  <span className="mono" style={{ color: s.rpe_target ? 'var(--vitta-blue)' : 'var(--text-muted)' }}>{s.rpe_target ?? '—'}</span>
+                                                  <span className="mono" style={{ color: 'var(--text-muted)' }}>{s.rest || '—'}</span>
+                                                  <button onClick={e => { e.stopPropagation(); deleteSet(s.id, item.id, block.id); }}
+                                                    style={{ background: 'transparent', border: 'none', color: '#D7474B', cursor: 'pointer', padding: '1px 0', opacity: 0.6, display: 'grid', placeItems: 'center' }}>
+                                                    <XIcon size={11}/>
+                                                  </button>
+                                                </div>
+                                              ))}
+                                            </>
+                                          )}
+                                          {addSetFor === item.id ? (
+                                            <AddSetForm
+                                              exerciseId={item.id}
+                                              onSaved={newSet => {
+                                                setDaySessions(prev => prev.map(s => ({
+                                                  ...s,
+                                                  session_blocks: s.session_blocks.map(b =>
+                                                    b.id === block.id ? {
+                                                      ...b,
+                                                      session_exercises: b.session_exercises.map(e =>
+                                                        e.id === item.id ? { ...e, sets: [...e.sets, newSet] } : e
+                                                      ),
+                                                    } : b
+                                                  ),
+                                                })));
+                                              }}
+                                              onClose={() => setAddSetFor(null)}
+                                            />
+                                          ) : (
+                                            <div style={{ padding: '5px 12px 7px' }}>
+                                              <button onClick={e => { e.stopPropagation(); setAddSetFor(item.id); }} className="btn btn-ghost btn-sm" style={{ fontSize: 10 }}>
+                                                <PlusIcon size={10}/>Añadir serie
                                               </button>
                                             </div>
-                                          ))}
-                                        </>
-                                      )}
-                                      {addSetFor === item.id ? (
-                                        <AddSetForm
-                                          exerciseId={item.id}
-                                          onSaved={newSet => {
-                                            setDaySessions(prev => prev.map(s => ({
-                                              ...s,
-                                              session_blocks: s.session_blocks.map(b =>
-                                                b.id === block.id ? {
-                                                  ...b,
-                                                  session_exercises: b.session_exercises.map(e =>
-                                                    e.id === item.id ? { ...e, sets: [...e.sets, newSet] } : e
-                                                  ),
-                                                } : b
-                                              ),
-                                            })));
-                                          }}
-                                          onClose={() => setAddSetFor(null)}
-                                        />
-                                      ) : (
-                                        <div style={{ padding: '5px 12px 7px' }}>
-                                          <button onClick={e => { e.stopPropagation(); setAddSetFor(item.id); }} className="btn btn-ghost btn-sm" style={{ fontSize: 10 }}>
-                                            <PlusIcon size={10}/>Añadir serie
-                                          </button>
+                                          )}
                                         </div>
                                       )}
                                     </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
+                                  );
+                                })}
+                              </div>
 
-                          {block.session_exercises.length === 0 && (
-                            <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '6px 0' }}>Sin ejercicios. Añade uno arriba.</div>
-                          )}
+                              {block.session_exercises.length === 0 && (
+                                <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '6px 0' }}>Sin ejercicios. Añade uno arriba.</div>
+                              )}
 
-                          {addExerciseFor === block.id && (
-                            <AddExerciseForm
-                              blockId={block.id}
-                              category={block.category}
-                              onSaved={() => { setAddExerciseFor(null); fetchDaySessions(); }}
-                              onCancel={() => setAddExerciseFor(null)}
-                            />
+                              {addExerciseFor === block.id && (
+                                <AddExerciseForm
+                                  blockId={block.id}
+                                  category={block.category}
+                                  onSaved={() => { setAddExerciseFor(null); fetchDaySessions(); }}
+                                  onCancel={() => setAddExerciseFor(null)}
+                                />
+                              )}
+                            </div>
                           )}
                         </div>
                       );
