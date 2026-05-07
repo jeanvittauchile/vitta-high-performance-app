@@ -245,26 +245,58 @@ function AddBlockForm({ sessionId, onSaved, onCancel }: { sessionId: string; onS
 
 // ─── Add Exercise inline form ────────────────────────────────
 
-function AddExerciseForm({ blockId, onSaved, onCancel }: { blockId: string; onSaved: () => void; onCancel: () => void }) {
+interface SetDraft { id: number; reps: string; load: string; rpe: string; rest: string; }
+
+function AddExerciseForm({ blockId, category, onSaved, onCancel }: {
+  blockId: string; category: CategoryId;
+  onSaved: () => void; onCancel: () => void;
+}) {
   const [name, setName] = useState('');
   const [level, setLevel] = useState<LevelId>('basico');
   const [note, setNote] = useState('');
-  const [setCount, setSetCount] = useState(3);
-  const [reps, setReps] = useState('5');
-  const [load, setLoad] = useState('');
-  const [rpeTarget, setRpeTarget] = useState('7');
-  const [restTime, setRestTime] = useState('2:00');
+  const [draftSets, setDraftSets] = useState<SetDraft[]>([
+    { id: 1, reps: '5', load: '', rpe: '7', rest: '2:00' },
+    { id: 2, reps: '5', load: '', rpe: '7', rest: '2:00' },
+    { id: 3, reps: '5', load: '', rpe: '7', rest: '2:00' },
+  ]);
+  const [counter, setCounter] = useState(4);
+  const [libNames, setLibNames] = useState<string[]>([]);
+  const [showSugg, setShowSugg] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   const inp: React.CSSProperties = { padding: '6px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 12, fontFamily: 'inherit', color: 'var(--text)' };
-  const lbl: React.CSSProperties = { fontSize: 9, color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 3 };
+  const si: React.CSSProperties  = { padding: '5px 7px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 11, fontFamily: 'inherit', color: 'var(--text)', width: '100%' };
 
-  const [saveError, setSaveError] = useState('');
+  useEffect(() => {
+    createClient().from('exercises').select('name').eq('category', category).order('name')
+      .then(({ data }) => setLibNames(data?.map((e: any) => e.name) || []));
+  }, [category]);
+
+  const suggestions = libNames.filter(n => !name.trim() || n.toLowerCase().includes(name.toLowerCase()));
+
+  function addRow() {
+    setDraftSets(prev => [...prev, { id: counter, reps: '', load: '', rpe: '', rest: '' }]);
+    setCounter(c => c + 1);
+  }
+
+  function dupRow(idx: number) {
+    const s = draftSets[idx];
+    setDraftSets(prev => [...prev.slice(0, idx + 1), { ...s, id: counter }, ...prev.slice(idx + 1)]);
+    setCounter(c => c + 1);
+  }
+
+  function delRow(idx: number) {
+    setDraftSets(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  function updateRow(idx: number, field: keyof Omit<SetDraft, 'id'>, value: string) {
+    setDraftSets(prev => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
+  }
 
   async function save() {
     if (!name.trim()) return;
-    setSaving(true);
-    setSaveError('');
+    setSaving(true); setSaveError('');
     const supabase = createClient();
     const { data: existing } = await supabase.from('session_exercises').select('sort_order').eq('block_id', blockId).order('sort_order', { ascending: false }).limit(1);
     const nextSort = ((existing?.[0]?.sort_order ?? -1) as number) + 1;
@@ -273,13 +305,18 @@ function AddExerciseForm({ blockId, onSaved, onCancel }: { blockId: string; onSa
       .insert({ block_id: blockId, name: name.trim(), level, note: note.trim() || null, sort_order: nextSort })
       .select('id').single();
     if (exErr) { setSaveError(exErr.message); setSaving(false); return; }
-    if (exData && setCount > 0) {
-      const sets = Array.from({ length: setCount }, (_, i) => ({
-        session_exercise_id: exData.id, reps: reps || null,
-        load: load ? Number(load) : null, rpe_target: rpeTarget ? Number(rpeTarget) : null,
-        rest: restTime || null, done: false, sort_order: i,
-      }));
-      const { error: setsErr } = await supabase.from('sets').insert(sets);
+    if (exData && draftSets.length > 0) {
+      const { error: setsErr } = await supabase.from('sets').insert(
+        draftSets.map((s, i) => ({
+          session_exercise_id: exData.id,
+          reps: s.reps || null,
+          load: s.load ? Number(s.load) : null,
+          rpe_target: s.rpe ? Number(s.rpe) : null,
+          rest: s.rest || null,
+          done: false,
+          sort_order: i,
+        }))
+      );
       if (setsErr) { setSaveError(setsErr.message); setSaving(false); return; }
     }
     setSaving(false);
@@ -287,30 +324,71 @@ function AddExerciseForm({ blockId, onSaved, onCancel }: { blockId: string; onSa
   }
 
   return (
-    <div style={{ marginTop: 8, padding: 12, background: 'rgba(46,107,214,0.05)', borderRadius: 10, border: '1px solid var(--border)', display: 'grid', gap: 8 }}>
+    <div style={{ marginTop: 8, padding: 12, background: 'rgba(46,107,214,0.05)', borderRadius: 10, border: '1px solid var(--border)', display: 'grid', gap: 10 }}>
+
+      {/* Name with dropdown + level */}
       <div style={{ display: 'flex', gap: 8 }}>
-        <input placeholder="Nombre del ejercicio" value={name} onChange={e => setName(e.target.value)} style={{ ...inp, flex: 1 }}/>
+        <div style={{ flex: 1, position: 'relative' }}>
+          <input
+            placeholder="Nombre del ejercicio"
+            value={name}
+            onChange={e => { setName(e.target.value); setShowSugg(true); }}
+            onFocus={() => setShowSugg(true)}
+            onBlur={() => setTimeout(() => setShowSugg(false), 160)}
+            style={{ ...inp, width: '100%', boxSizing: 'border-box' }}
+          />
+          {showSugg && suggestions.length > 0 && (
+            <div style={{ position: 'absolute', top: 'calc(100% + 2px)', left: 0, right: 0, zIndex: 200, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.18)', maxHeight: 200, overflowY: 'auto' }}>
+              {suggestions.slice(0, 12).map((n, i) => (
+                <button key={i} type="button"
+                  onMouseDown={() => { setName(n); setShowSugg(false); }}
+                  style={{ width: '100%', padding: '8px 12px', textAlign: 'left', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text)', borderTop: i > 0 ? '1px solid var(--border)' : 'none', fontFamily: 'inherit' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >{n}</button>
+              ))}
+            </div>
+          )}
+        </div>
         <select value={level} onChange={e => setLevel(e.target.value as LevelId)} style={inp}>
           <option value="basico">Básico</option>
           <option value="intermedio">Intermedio</option>
           <option value="avanzado">Avanzado</option>
         </select>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
-        {[
-          { label: 'Series',    el: <input type="number" min={1} max={20} value={setCount} onChange={e => setSetCount(Number(e.target.value))} style={{ ...inp, width: '100%' }}/> },
-          { label: 'Reps',     el: <input placeholder="5" value={reps} onChange={e => setReps(e.target.value)} style={{ ...inp, width: '100%' }}/> },
-          { label: 'Kg',       el: <input type="number" min={0} step={0.5} placeholder="—" value={load} onChange={e => setLoad(e.target.value)} style={{ ...inp, width: '100%' }}/> },
-          { label: 'RPE',      el: <input type="number" min={1} max={10} step={0.5} placeholder="7" value={rpeTarget} onChange={e => setRpeTarget(e.target.value)} style={{ ...inp, width: '100%' }}/> },
-          { label: 'Descanso', el: <input placeholder="2:00" value={restTime} onChange={e => setRestTime(e.target.value)} style={{ ...inp, width: '100%' }}/> },
-        ].map(({ label, el }) => (
-          <div key={label}>
-            <div style={lbl}>{label}</div>
-            {el}
+
+      {/* Sets table */}
+      <div style={{ background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 1fr 48px 1fr 42px', gap: 6, padding: '5px 10px', fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>
+          <div>#</div><div>REPS</div><div>KG</div><div>RPE</div><div>DESCANSO</div><div/>
+        </div>
+        {draftSets.map((s, i) => (
+          <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '24px 1fr 1fr 48px 1fr 42px', gap: 6, padding: '5px 10px', alignItems: 'center', borderTop: i > 0 ? '1px solid var(--border)' : undefined }}>
+            <span className="mono" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)' }}>{i + 1}</span>
+            <input placeholder="5"   value={s.reps} onChange={e => updateRow(i, 'reps', e.target.value)} style={si}/>
+            <input placeholder="—"   type="number" min={0} step={0.5} value={s.load} onChange={e => updateRow(i, 'load', e.target.value)} style={si}/>
+            <input placeholder="7"   type="number" min={1} max={10} step={0.5} value={s.rpe} onChange={e => updateRow(i, 'rpe', e.target.value)} style={si}/>
+            <input placeholder="2:00" value={s.rest} onChange={e => updateRow(i, 'rest', e.target.value)} style={si}/>
+            <div style={{ display: 'flex', gap: 1 }}>
+              <button type="button" onClick={() => dupRow(i)} title="Copiar serie"
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '2px 4px', borderRadius: 4, display: 'grid', placeItems: 'center' }}>
+                <CopyIcon size={11}/>
+              </button>
+              <button type="button" onClick={() => delRow(i)} title="Eliminar serie" disabled={draftSets.length === 1}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#D7474B', padding: '2px 4px', borderRadius: 4, display: 'grid', placeItems: 'center', opacity: draftSets.length === 1 ? 0.25 : 0.7 }}>
+                <XIcon size={11}/>
+              </button>
+            </div>
           </div>
         ))}
+        <div style={{ padding: '6px 10px', borderTop: '1px solid var(--border)' }}>
+          <button type="button" onClick={addRow} className="btn btn-ghost btn-sm" style={{ fontSize: 10 }}>
+            <PlusIcon size={10}/>Añadir serie
+          </button>
+        </div>
       </div>
-      <input placeholder="Nota / descripción (opcional)" value={note} onChange={e => setNote(e.target.value)} style={{ ...inp, width: '100%' }}/>
+
+      <input placeholder="Nota / descripción (opcional)" value={note} onChange={e => setNote(e.target.value)} style={{ ...inp, width: '100%', boxSizing: 'border-box' }}/>
       {saveError && <div style={{ fontSize: 11, color: 'var(--red)', padding: '5px 8px', background: 'rgba(215,71,75,0.08)', borderRadius: 5 }}>{saveError}</div>}
       <div style={{ display: 'flex', gap: 6 }}>
         <button onClick={save} disabled={saving || !name.trim()} className="btn btn-primary btn-sm">{saving ? '...' : 'Añadir ejercicio'}</button>
@@ -973,6 +1051,7 @@ export default function PlannerPage() {
                           {addExerciseFor === block.id && (
                             <AddExerciseForm
                               blockId={block.id}
+                              category={block.category}
                               onSaved={() => { setAddExerciseFor(null); fetchDaySessions(); }}
                               onCancel={() => setAddExerciseFor(null)}
                             />
