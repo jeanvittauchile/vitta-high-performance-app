@@ -377,7 +377,7 @@ export default function TodayPage() {
   const [feedbackSaving, setFeedbackSaving] = useState(false);
   const [feedbackSaved, setFeedbackSaved] = useState(false);
   const hasUserEdited = useRef(false);
-  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const latestFeedbackRef = useRef(feedback);
   const latestSessionIdRef = useRef<string | undefined>(undefined);
 
