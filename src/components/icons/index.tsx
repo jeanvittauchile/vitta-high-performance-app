@@ -226,6 +226,13 @@ export const LockIcon = (p: IconProps) => (
     <path d="M7 11V7a5 5 0 0110 0v4"/>
   </Icon>
 );
+export const LogOutIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
+    <polyline points="16 17 21 12 16 7"/>
+    <line x1="21" y1="12" x2="9" y2="12"/>
+  </Icon>
+);
 export const TrashIcon = (p: IconProps) => (
   <Icon {...p}>
     <polyline points="3 6 5 6 21 6"/>

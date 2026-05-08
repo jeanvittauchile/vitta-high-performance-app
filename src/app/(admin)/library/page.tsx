@@ -560,84 +560,86 @@ export default function LibraryPage() {
         <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
           Cargando ejercicios...
         </div>
+      ) : filtered.length === 0 ? (
+        <div className="card" style={{ padding: 40, textAlign: 'center' }}>
+          <SearchIcon size={28} stroke="var(--text-muted)"/>
+          <div style={{ fontSize: 14, fontWeight: 600, marginTop: 10 }}>Sin resultados</div>
+          <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Prueba a quitar filtros o ajustar la búsqueda.</div>
+        </div>
       ) : (
-        <div style={{ display: 'grid', gap: 14 }}>
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          {/* Table header */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: '1fr 72px minmax(0,220px) 20px 26px 26px',
+            gap: 10, padding: '7px 14px',
+            background: 'var(--surface-2)', borderBottom: '1px solid var(--border)',
+            fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)',
+          }}>
+            <div>Ejercicio</div><div>Nivel</div><div>Músculo · Equipo</div><div/><div/><div/>
+          </div>
+
           {Object.entries(grouped).map(([catId, exs]) => {
             const c = CATEGORIES[catId];
             const Ic = getCategoryIcon(catId);
             return (
-              <div key={catId} className="card" style={{ padding: 14, borderLeft: `3px solid ${c.color}` }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ width: 28, height: 28, borderRadius: 6, background: `${c.color}1f`, color: c.color, display: 'grid', placeItems: 'center' }}>
-                      <Ic size={14} stroke="currentColor"/>
-                    </div>
-                    <div style={{ fontSize: 14, fontWeight: 700 }}>{c.label}</div>
-                    <span className="mono muted" style={{ fontSize: 11 }}>· {exs.length} {exs.length === 1 ? 'ejercicio' : 'ejercicios'}</span>
+              <div key={catId}>
+                {/* Category header */}
+                <div style={{
+                  padding: '6px 14px', display: 'flex', alignItems: 'center', gap: 7,
+                  background: `${c.color}0e`, borderBottom: '1px solid var(--border)',
+                  borderLeft: `3px solid ${c.color}`,
+                }}>
+                  <Ic size={12} stroke={c.color}/>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: c.color, letterSpacing: '0.04em' }}>{c.label}</span>
+                  <span className="muted" style={{ fontSize: 10 }}>({exs.length})</span>
+                </div>
+
+                {/* Exercise rows */}
+                {exs.map((ex, i) => (
+                  <div
+                    key={ex.id}
+                    style={{
+                      display: 'grid', gridTemplateColumns: '1fr 72px minmax(0,220px) 20px 26px 26px',
+                      gap: 10, padding: '7px 14px', alignItems: 'center',
+                      borderBottom: i < exs.length - 1 ? '1px solid var(--border)' : '1px solid var(--border)',
+                      background: 'white',
+                    }}
+                  >
+                    <button
+                      onClick={() => setDetailEx(ex)}
+                      style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 500, color: 'var(--text)' }}
+                    >
+                      {ex.name}
+                    </button>
+                    <LevelBadge level={ex.level} size="sm"/>
+                    <span className="muted" style={{ fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {[ex.muscle !== '—' ? ex.muscle : '', ex.equipment !== '—' ? ex.equipment : ''].filter(Boolean).join(' · ') || '—'}
+                    </span>
+                    {ex.video_url ? (
+                      <a href={ex.video_url} target="_blank" rel="noopener noreferrer" title="Ver video"
+                        style={{ display: 'grid', placeItems: 'center', color: 'var(--vitta-blue)' }}>
+                        <VideoIcon size={13}/>
+                      </a>
+                    ) : <div/>}
+                    <button
+                      onClick={() => setEditEx(ex)}
+                      title="Editar"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'grid', placeItems: 'center', borderRadius: 5, padding: 4, width: 26, height: 26 }}
+                    >
+                      <PencilIcon size={13}/>
+                    </button>
+                    <button
+                      onClick={() => setAddToSessionEx(ex)}
+                      title="Agregar a sesión"
+                      style={{ background: 'var(--vitta-blue)', border: 'none', cursor: 'pointer', color: '#fff', display: 'grid', placeItems: 'center', borderRadius: 5, padding: 4, width: 26, height: 26 }}
+                    >
+                      <PlusIcon size={13}/>
+                    </button>
                   </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                  {exs.map(ex => (
-                    <div key={ex.id} style={{
-                      padding: '10px 12px', borderRadius: 8,
-                      background: 'var(--surface-2)', border: '1px solid var(--border)',
-                      display: 'flex', flexDirection: 'column', gap: 6,
-                    }}>
-                      {/* Name + level */}
-                      <div>
-                        <button
-                          onClick={() => setDetailEx(ex)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: 0, fontFamily: 'inherit', color: 'var(--text)', fontSize: 13, fontWeight: 600 }}
-                        >
-                          {ex.name}
-                        </button>
-                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
-                          <LevelBadge level={ex.level} size="sm"/>
-                          {ex.video_url && (
-                            <a href={ex.video_url} target="_blank" rel="noopener noreferrer"
-                              title="Ver video"
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 6px', borderRadius: 4, background: 'rgba(46,107,214,0.10)', color: 'var(--vitta-blue)', fontSize: 9, fontWeight: 700, textDecoration: 'none', letterSpacing: '0.04em' }}>
-                              <VideoIcon size={9} stroke="currentColor"/>VIDEO
-                            </a>
-                          )}
-                        </div>
-                        <div className="muted" style={{ fontSize: 10, marginTop: 4 }}>{ex.muscle} · {ex.equipment}</div>
-                      </div>
-
-                      {/* Actions */}
-                      <div style={{ display: 'flex', gap: 5, marginTop: 'auto' }}>
-                        <button
-                          onClick={() => setDetailEx(ex)}
-                          style={{ flex: 1, padding: '5px 0', borderRadius: 6, border: '1px solid var(--border)', background: 'white', color: 'var(--text-muted)', fontSize: 11, fontFamily: 'inherit', cursor: 'pointer', fontWeight: 500 }}>
-                          Ver detalles
-                        </button>
-                        <button
-                          onClick={() => setEditEx(ex)}
-                          title="Editar ejercicio"
-                          style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-muted)', borderRadius: 6, width: 28, height: 28, display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0 }}>
-                          <PencilIcon size={12}/>
-                        </button>
-                        <button
-                          onClick={() => setAddToSessionEx(ex)}
-                          title="Agregar a sesión"
-                          style={{ background: 'var(--vitta-blue)', border: 'none', color: '#fff', borderRadius: 6, width: 28, height: 28, display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0 }}>
-                          <PlusIcon size={13}/>
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                ))}
               </div>
             );
           })}
-          {filtered.length === 0 && (
-            <div className="card" style={{ padding: 40, textAlign: 'center' }}>
-              <SearchIcon size={28} stroke="var(--text-muted)"/>
-              <div style={{ fontSize: 14, fontWeight: 600, marginTop: 10 }}>Sin resultados</div>
-              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Prueba a quitar filtros o ajustar la búsqueda.</div>
-            </div>
-          )}
         </div>
       )}
     </div>

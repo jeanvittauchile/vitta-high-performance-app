@@ -18,6 +18,9 @@ interface SetRow {
   rest: string | null;
   done: boolean;
   sort_order: number;
+  actual_reps: number | null;
+  actual_load: number | null;
+  actual_rpe: number | null;
 }
 
 interface ExRow {
@@ -79,6 +82,42 @@ function Stat({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+// ─── ActualInput ─────────────────────────────────────────────
+
+function ActualInput({ label, value, setId, field }: {
+  label: string;
+  value: number | null;
+  setId: string;
+  field: 'actual_reps' | 'actual_load' | 'actual_rpe';
+}) {
+  const [v, setV] = useState(value != null ? String(value) : '');
+
+  async function save() {
+    const num = parseFloat(v);
+    const supabase = createClient();
+    await supabase.from('sets').update({ [field]: isNaN(num) ? null : num }).eq('id', setId);
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 9, color: 'var(--d-text-faint)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.06em', marginBottom: 3 }}>{label}</div>
+      <input
+        type="number"
+        inputMode="decimal"
+        value={v}
+        onChange={e => setV(e.target.value)}
+        onBlur={save}
+        placeholder="—"
+        style={{
+          width: '100%', background: 'rgba(255,255,255,0.08)', border: '1px solid var(--d-border-strong)',
+          borderRadius: 6, padding: '5px 7px', color: 'var(--vitta-cream)', fontSize: 13,
+          fontFamily: 'var(--font-mono)', outline: 'none', textAlign: 'center',
+        }}
+      />
+    </div>
+  );
+}
+
 // ─── ExerciseRow ─────────────────────────────────────────────
 
 function ExerciseRow({ ex, block, onToggleSet, onOpen }: {
@@ -109,22 +148,36 @@ function ExerciseRow({ ex, block, onToggleSet, onOpen }: {
             <div>SET</div><div>REPS</div><div>CARGA</div><div>RPE</div><div/>
           </div>
           {ex.sets.map((s, i) => (
-            <div
-              key={s.id}
-              onClick={() => onToggleSet(s.id, s.done)}
-              style={{ display: 'grid', gridTemplateColumns: '28px 60px 1fr 60px 24px', gap: 8, padding: '8px 8px', alignItems: 'center', borderRadius: 8, cursor: 'pointer', background: s.done ? 'rgba(43,182,115,0.10)' : 'transparent' }}
-            >
-              <div className="mono" style={{ fontSize: 13, fontWeight: 700, color: s.done ? 'var(--green)' : 'var(--d-text)' }}>{i + 1}</div>
-              <div className="mono tnum" style={{ fontSize: 13, color: 'var(--d-text)' }}>{s.reps || '—'}</div>
-              <div className="mono tnum" style={{ fontSize: 13, color: 'var(--d-text)' }}>
-                {s.load ? (isNaN(Number(s.load)) ? s.load : `${s.load} kg`) : '—'}
+            <div key={s.id} style={{ borderRadius: 8, overflow: 'hidden', marginBottom: 2 }}>
+              <div
+                onClick={() => onToggleSet(s.id, s.done)}
+                style={{ display: 'grid', gridTemplateColumns: '28px 60px 1fr 60px 24px', gap: 8, padding: '8px 8px', alignItems: 'center', cursor: 'pointer', background: s.done ? 'rgba(43,182,115,0.10)' : 'transparent', borderRadius: s.done ? '8px 8px 0 0' : 8 }}
+              >
+                <div className="mono" style={{ fontSize: 13, fontWeight: 700, color: s.done ? 'var(--green)' : 'var(--d-text)' }}>{i + 1}</div>
+                <div className="mono tnum" style={{ fontSize: 13, color: 'var(--d-text)' }}>{s.reps || '—'}</div>
+                <div className="mono tnum" style={{ fontSize: 13, color: 'var(--d-text)' }}>
+                  {s.load ? (isNaN(Number(s.load)) ? s.load : `${s.load} kg`) : '—'}
+                </div>
+                <div className="mono tnum" style={{ fontSize: 12, color: s.rpe_target ? 'var(--amber)' : 'var(--d-text-faint)' }}>
+                  {s.rpe_target ?? '—'}
+                </div>
+                <div style={{ width: 22, height: 22, borderRadius: 11, border: `1.5px solid ${s.done ? 'var(--green)' : 'var(--d-border-strong)'}`, background: s.done ? 'var(--green)' : 'transparent', display: 'grid', placeItems: 'center' }}>
+                  {s.done && <CheckIcon size={12} stroke="white" strokeWidth={3}/>}
+                </div>
               </div>
-              <div className="mono tnum" style={{ fontSize: 12, color: s.rpe_target ? 'var(--amber)' : 'var(--d-text-faint)' }}>
-                {s.rpe_target ?? '—'}
-              </div>
-              <div style={{ width: 22, height: 22, borderRadius: 11, border: `1.5px solid ${s.done ? 'var(--green)' : 'var(--d-border-strong)'}`, background: s.done ? 'var(--green)' : 'transparent', display: 'grid', placeItems: 'center' }}>
-                {s.done && <CheckIcon size={12} stroke="white" strokeWidth={3}/>}
-              </div>
+              {s.done && (
+                <div
+                  onClick={e => e.stopPropagation()}
+                  style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, padding: '6px 8px 8px', background: 'rgba(43,182,115,0.06)', borderTop: '1px solid rgba(43,182,115,0.18)' }}
+                >
+                  <div style={{ fontSize: 9, color: 'var(--green)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', gridColumn: '1 / -1', marginBottom: 2 }}>
+                    Registrar resultados
+                  </div>
+                  <ActualInput label="Reps reales" value={s.actual_reps} setId={s.id} field="actual_reps"/>
+                  <ActualInput label="Carga (kg)" value={s.actual_load} setId={s.id} field="actual_load"/>
+                  <ActualInput label="RPE real" value={s.actual_rpe} setId={s.id} field="actual_rpe"/>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -196,6 +249,9 @@ export default function TodayPage() {
   const [session, setSession] = useState<SessRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeExercise, setActiveExercise] = useState<{ ex: ExRow; catId: CategoryId } | null>(null);
+  const [feedback, setFeedback] = useState({ sleepHours: 7, energyLevel: 0, painLevel: '' });
+  const [feedbackSaving, setFeedbackSaving] = useState(false);
+  const [feedbackSaved, setFeedbackSaved] = useState(false);
 
   const fetchSession = useCallback(async () => {
     if (!athleteId) { setLoading(false); return; }
@@ -211,7 +267,7 @@ export default function TodayPage() {
           session_exercises (
             id, name, level, note, sort_order,
             exercises ( slug, muscle, equipment ),
-            sets ( id, reps, load, rpe_target, rest, done, sort_order )
+            sets ( id, reps, load, rpe_target, rest, done, sort_order, actual_reps, actual_load, actual_rpe )
           )
         )
       `)
@@ -249,6 +305,32 @@ export default function TodayPage() {
   useEffect(() => {
     if (!authLoading) fetchSession();
   }, [authLoading, fetchSession]);
+
+  useEffect(() => {
+    if (!session?.id) return;
+    const supabase = createClient();
+    supabase
+      .from('session_feedback')
+      .select('sleep_hours, energy_level, pain_level')
+      .eq('session_id', session.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) setFeedback({ sleepHours: data.sleep_hours ?? 7, energyLevel: data.energy_level ?? 0, painLevel: data.pain_level ?? '' });
+      });
+  }, [session?.id]);
+
+  async function saveFeedback(fb: { sleepHours: number; energyLevel: number; painLevel: string }) {
+    if (!session?.id) return;
+    setFeedbackSaving(true);
+    const supabase = createClient();
+    await supabase.from('session_feedback').upsert(
+      { session_id: session.id, sleep_hours: fb.sleepHours, energy_level: fb.energyLevel || null, pain_level: fb.painLevel || null },
+      { onConflict: 'session_id' }
+    );
+    setFeedbackSaving(false);
+    setFeedbackSaved(true);
+    setTimeout(() => setFeedbackSaved(false), 2000);
+  }
 
   async function toggleSet(setId: string, done: boolean) {
     setSession(prev => {
@@ -348,15 +430,61 @@ export default function TodayPage() {
 
       <div style={{ marginTop: 20, background: 'var(--d-surface)', border: '1px solid var(--d-border)', borderRadius: 16, padding: 16 }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--d-text-faint)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Después de la sesión</div>
-        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>¿Cómo te sentiste hoy?</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-          {[{ l: 'Sueño', v: '7h' }, { l: 'Energía', v: '8/10' }, { l: 'Dolor', v: 'Ninguno' }].map((f, i) => (
-            <div key={i} style={{ padding: '10px 12px', borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: '1px solid var(--d-border)' }}>
-              <div style={{ fontSize: 10, color: 'var(--d-text-faint)' }}>{f.l}</div>
-              <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>{f.v}</div>
-            </div>
-          ))}
+        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>¿Cómo te sentiste hoy?</div>
+
+        {/* Sleep hours stepper */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, color: 'var(--d-text-muted)', marginBottom: 8, fontWeight: 600, letterSpacing: '0.04em' }}>Horas de sueño</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button
+              onClick={() => setFeedback(f => ({ ...f, sleepHours: Math.max(4, f.sleepHours - 0.5) }))}
+              style={{ width: 34, height: 34, borderRadius: 8, border: '1px solid var(--d-border-strong)', background: 'transparent', color: 'var(--d-text)', fontSize: 20, cursor: 'pointer', display: 'grid', placeItems: 'center', lineHeight: 1 }}
+            >−</button>
+            <span className="display tnum" style={{ fontSize: 24, color: 'var(--vitta-cream)', minWidth: 52, textAlign: 'center' }}>{feedback.sleepHours}h</span>
+            <button
+              onClick={() => setFeedback(f => ({ ...f, sleepHours: Math.min(12, f.sleepHours + 0.5) }))}
+              style={{ width: 34, height: 34, borderRadius: 8, border: '1px solid var(--d-border-strong)', background: 'transparent', color: 'var(--d-text)', fontSize: 20, cursor: 'pointer', display: 'grid', placeItems: 'center', lineHeight: 1 }}
+            >+</button>
+          </div>
         </div>
+
+        {/* Energy level 1–10 */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, color: 'var(--d-text-muted)', marginBottom: 8, fontWeight: 600, letterSpacing: '0.04em' }}>
+            Nivel de energía {feedback.energyLevel > 0 && <span style={{ color: 'var(--vitta-blue-bright)' }}>· {feedback.energyLevel}/10</span>}
+          </div>
+          <div style={{ display: 'flex', gap: 3 }}>
+            {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
+              <button
+                key={n}
+                onClick={() => setFeedback(f => ({ ...f, energyLevel: n }))}
+                style={{ flex: 1, height: 30, borderRadius: 4, border: 'none', background: feedback.energyLevel >= n ? 'var(--vitta-blue)' : 'var(--d-border)', color: feedback.energyLevel >= n ? '#fff' : 'var(--d-text-faint)', fontSize: 10, fontWeight: 700, cursor: 'pointer', transition: 'background 0.1s' }}
+              >{n}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Pain level */}
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 11, color: 'var(--d-text-muted)', marginBottom: 8, fontWeight: 600, letterSpacing: '0.04em' }}>Nivel de dolor / molestia</div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {([{ v: 'ninguno', l: 'Ninguno' }, { v: 'leve', l: 'Leve' }, { v: 'moderado', l: 'Moderado' }, { v: 'fuerte', l: 'Fuerte' }] as const).map(opt => (
+              <button
+                key={opt.v}
+                onClick={() => setFeedback(f => ({ ...f, painLevel: opt.v }))}
+                style={{ flex: 1, padding: '7px 0', borderRadius: 8, border: `1px solid ${feedback.painLevel === opt.v ? 'var(--vitta-blue)' : 'var(--d-border)'}`, background: feedback.painLevel === opt.v ? 'rgba(46,107,214,0.20)' : 'transparent', color: feedback.painLevel === opt.v ? 'var(--vitta-blue-bright)' : 'var(--d-text-faint)', fontSize: 11, fontWeight: 600, cursor: 'pointer', transition: 'all 0.1s' }}
+              >{opt.l}</button>
+            ))}
+          </div>
+        </div>
+
+        <button
+          onClick={() => saveFeedback(feedback)}
+          disabled={feedbackSaving}
+          style={{ width: '100%', padding: '11px', borderRadius: 10, border: 'none', background: feedbackSaved ? 'var(--green)' : 'var(--vitta-blue)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: feedbackSaving ? 'wait' : 'pointer', transition: 'background 0.2s', opacity: feedbackSaving ? 0.7 : 1 }}
+        >
+          {feedbackSaved ? '✓ Guardado' : feedbackSaving ? 'Guardando…' : 'Guardar bienestar'}
+        </button>
       </div>
 
       {activeExercise && (

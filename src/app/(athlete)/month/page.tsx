@@ -1,10 +1,17 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { useAthlete } from '@/lib/athlete-context';
-import { DAY_TYPES } from '@/lib/constants';
+import { DAY_TYPES, CATEGORIES } from '@/lib/constants';
 import { ChevronDown, ChevronRight, ChevronLeft } from '@/components/icons';
 import type { DayType } from '@/lib/types';
+
+interface DaySession {
+  title: string;
+  duration: number;
+  blocks: { name: string; category: string }[];
+}
 
 const DAY_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -34,12 +41,31 @@ function defaultPlan(): DayType[][] {
 
 export default function MonthPage() {
   const { athleteId, loading: authLoading } = useAthlete();
+  const router = useRouter();
   const now = new Date();
   const [year, setYear]   = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [plan, setPlan]   = useState<DayType[][] | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedWeek, setExpandedWeek] = useState<number | null>(null);
+  const [selectedDayISO, setSelectedDayISO] = useState<string | null>(null);
+  const [daySessions, setDaySessions] = useState<Record<string, DaySession | null | 'loading'>>({});
+
+  const fetchDaySession = useCallback(async (dateISO: string) => {
+    if (!athleteId || daySessions[dateISO] !== undefined) return;
+    setDaySessions(prev => ({ ...prev, [dateISO]: 'loading' }));
+    const supabase = createClient();
+    const { data } = await supabase
+      .from('sessions')
+      .select('title, duration, session_blocks(name, category)')
+      .eq('athlete_id', athleteId)
+      .eq('date', dateISO)
+      .maybeSingle();
+    setDaySessions(prev => ({
+      ...prev,
+      [dateISO]: data ? { title: data.title, duration: data.duration, blocks: (data.session_blocks || []).map((b: any) => ({ name: b.name, category: b.category })) } : null,
+    }));
+  }, [athleteId, daySessions]);
 
   useEffect(() => {
     if (authLoading || !athleteId) return;
@@ -168,21 +194,74 @@ export default function MonthPage() {
                       const dateISO = date.toISOString().slice(0, 10);
                       const isToday = dateISO === todayISO;
                       const dayNum = date.getDate();
+                      const hasSession = d !== 'REST';
+                      const isSelected = selectedDayISO === dateISO;
+                      const sessionData = daySessions[dateISO];
+
+                      function handleDayClick() {
+                        if (!hasSession) return;
+                        if (isSelected) { setSelectedDayISO(null); return; }
+                        setSelectedDayISO(dateISO);
+                        fetchDaySession(dateISO);
+                      }
+
                       return (
-                        <div key={di} style={{
-                          display: 'grid', gridTemplateColumns: '28px 36px 1fr auto', gap: 10, alignItems: 'center',
-                          padding: '10px 10px', borderRadius: 10,
-                          background: isToday ? 'rgba(46,107,214,0.12)' : 'rgba(255,255,255,0.02)',
-                          border: isToday ? '1px solid var(--vitta-blue)' : '1px solid transparent',
-                        }}>
-                          <div className="mono" style={{ fontSize: 11, color: 'var(--d-text-faint)', fontWeight: 700 }}>{DAY_LABELS[di]}</div>
-                          <div className="display tnum" style={{ fontSize: 16, color: isToday ? 'var(--vitta-blue-bright)' : 'var(--d-text)' }}>{dayNum}</div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            {d !== 'REST' && <div style={{ width: 8, height: 8, borderRadius: 4, background: t.color }}/>}
-                            <span style={{ fontSize: 13, color: d === 'REST' ? 'var(--d-text-faint)' : 'var(--d-text)', fontWeight: d === 'REST' ? 400 : 500 }}>{t.label}</span>
-                            {isToday && <span style={{ padding: '2px 6px', borderRadius: 4, background: 'var(--vitta-blue)', color: '#fff', fontSize: 9, fontWeight: 700, letterSpacing: '0.06em' }}>HOY</span>}
+                        <div key={di} style={{ borderRadius: 10, overflow: 'hidden', border: isToday ? '1px solid var(--vitta-blue)' : isSelected ? '1px solid var(--d-border-strong)' : '1px solid transparent' }}>
+                          <div
+                            onClick={handleDayClick}
+                            style={{
+                              display: 'grid', gridTemplateColumns: '28px 36px 1fr auto', gap: 10, alignItems: 'center',
+                              padding: '10px 10px',
+                              background: isToday ? 'rgba(46,107,214,0.12)' : isSelected ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.02)',
+                              cursor: hasSession ? 'pointer' : 'default',
+                            }}
+                          >
+                            <div className="mono" style={{ fontSize: 11, color: 'var(--d-text-faint)', fontWeight: 700 }}>{DAY_LABELS[di]}</div>
+                            <div className="display tnum" style={{ fontSize: 16, color: isToday ? 'var(--vitta-blue-bright)' : 'var(--d-text)' }}>{dayNum}</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              {d !== 'REST' && <div style={{ width: 8, height: 8, borderRadius: 4, background: t.color }}/>}
+                              <span style={{ fontSize: 13, color: d === 'REST' ? 'var(--d-text-faint)' : 'var(--d-text)', fontWeight: d === 'REST' ? 400 : 500 }}>{t.label}</span>
+                              {isToday && <span style={{ padding: '2px 6px', borderRadius: 4, background: 'var(--vitta-blue)', color: '#fff', fontSize: 9, fontWeight: 700, letterSpacing: '0.06em' }}>HOY</span>}
+                            </div>
+                            {hasSession && <ChevronRight size={14} style={{ color: 'var(--d-text-faint)', transform: isSelected ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}/>}
                           </div>
-                          <ChevronRight size={14} style={{ color: 'var(--d-text-faint)' }}/>
+
+                          {isSelected && (
+                            <div style={{ borderTop: '1px solid var(--d-border)', padding: '10px 12px', background: 'rgba(255,255,255,0.02)' }}>
+                              {sessionData === 'loading' ? (
+                                <div style={{ fontSize: 12, color: 'var(--d-text-muted)', textAlign: 'center', padding: '4px 0' }}>Cargando...</div>
+                              ) : sessionData === null || sessionData === undefined ? (
+                                <div style={{ fontSize: 12, color: 'var(--d-text-faint)', textAlign: 'center', padding: '4px 0' }}>Sin sesión asignada para este día.</div>
+                              ) : (
+                                <div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                                    <div>
+                                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--d-text)' }}>{sessionData.title}</div>
+                                      <div style={{ fontSize: 11, color: 'var(--d-text-muted)', marginTop: 2 }}>{sessionData.duration} min</div>
+                                    </div>
+                                    {isToday && (
+                                      <button
+                                        onClick={() => router.push('/today')}
+                                        style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: 'var(--vitta-blue)', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                                      >
+                                        Ver sesión →
+                                      </button>
+                                    )}
+                                  </div>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                    {sessionData.blocks.map((b, bi) => {
+                                      const cat = CATEGORIES[b.category];
+                                      return (
+                                        <span key={bi} style={{ padding: '2px 8px', borderRadius: 4, background: cat ? `${cat.color}22` : 'var(--d-border)', color: cat?.color || 'var(--d-text-muted)', fontSize: 11, fontWeight: 600 }}>
+                                          {b.name}
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
