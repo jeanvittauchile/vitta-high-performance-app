@@ -1,9 +1,9 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
 import { useAthlete } from '@/lib/athlete-context';
 import { CATEGORIES } from '@/lib/constants';
-import { getCategoryIcon, PlayIcon, InfoIcon, CheckIcon, ChevronDown } from '@/components/icons';
+import { getCategoryIcon, PlayIcon, InfoIcon, CheckIcon, ChevronDown, XIcon, PauseIcon } from '@/components/icons';
 import LevelBadge from '@/components/badges/LevelBadge';
 import ExerciseSheet from '@/components/athlete/ExerciseSheet';
 import type { SessionExercise, LevelId, CategoryId } from '@/lib/types';
@@ -71,6 +71,12 @@ function toSessionExercise(ex: ExRow, catId: CategoryId): SessionExercise {
       done: s.done,
     })),
   };
+}
+
+function formatTime(totalSeconds: number) {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 function Stat({ label, value }: { label: string; value: string | number }) {
@@ -242,6 +248,117 @@ function BlockCard({ block, index, onToggleSet, onOpenExercise }: {
   );
 }
 
+// ─── SessionDetailsSheet ─────────────────────────────────────
+
+function SessionDetailsSheet({ session, onClose }: { session: SessRow; onClose: () => void }) {
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  const totalSets = session.session_blocks.reduce((s, b) => s + b.session_exercises.reduce((s2, e) => s2 + e.sets.length, 0), 0);
+  const totalExercises = session.session_blocks.reduce((s, b) => s + b.session_exercises.length, 0);
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+      <div onClick={onClose} style={{ flex: 1, background: 'rgba(0,0,0,0.55)' }}/>
+      <div className="thin-scroll-dark" style={{
+        background: 'var(--d-bg)', borderRadius: '20px 20px 0 0',
+        maxHeight: '88vh', overflowY: 'auto', padding: '0 16px 40px',
+        boxShadow: '0 -8px 40px rgba(0,0,0,0.5)',
+      }}>
+        {/* Handle + header */}
+        <div style={{ position: 'sticky', top: 0, background: 'var(--d-bg)', paddingTop: 14, paddingBottom: 12, zIndex: 1 }}>
+          <div style={{ width: 40, height: 4, borderRadius: 2, background: 'var(--d-border-strong)', margin: '0 auto 14px' }}/>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontSize: 10, color: 'var(--d-text-faint)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>Detalles de sesión</div>
+              <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--d-text)', lineHeight: 1.3, maxWidth: '80%' }}>{session.title}</div>
+              {session.block && <div style={{ fontSize: 11, color: 'var(--d-text-muted)', marginTop: 4 }}>{session.block}</div>}
+            </div>
+            <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 16, border: '1px solid var(--d-border)', background: 'rgba(255,255,255,0.06)', color: 'var(--d-text-muted)', display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0, marginTop: 2 }}>
+              <XIcon size={15}/>
+            </button>
+          </div>
+        </div>
+
+        {/* Stats strip */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 20 }}>
+          {[
+            { label: 'Duración', value: `${session.duration}'` },
+            { label: 'RPE objetivo', value: String(session.rpe_target) },
+            { label: `${totalExercises} ejerc · ${totalSets} series`, value: `${session.session_blocks.length} bloq` },
+          ].map(s => (
+            <div key={s.label} style={{ background: 'var(--d-surface)', border: '1px solid var(--d-border)', borderRadius: 12, padding: '10px 12px' }}>
+              <div className="display tnum" style={{ fontSize: 20, color: 'var(--vitta-cream)', marginBottom: 3 }}>{s.value}</div>
+              <div style={{ fontSize: 10, color: 'var(--d-text-faint)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Blocks */}
+        <div style={{ display: 'grid', gap: 14 }}>
+          {session.session_blocks.map((block, bi) => {
+            const CatIcon = getCategoryIcon(block.category);
+            const blockColor = block.color || CATEGORIES[block.category]?.color || '#2E6BD6';
+            const doneSets = block.session_exercises.reduce((s, e) => s + e.sets.filter(set => set.done).length, 0);
+            const totalBSets = block.session_exercises.reduce((s, e) => s + e.sets.length, 0);
+            return (
+              <div key={block.id}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 7, background: `${blockColor}22`, color: blockColor, display: 'grid', placeItems: 'center' }}>
+                    <CatIcon size={14} stroke="currentColor"/>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: 10, color: 'var(--d-text-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Bloque {String.fromCharCode(65 + bi)} · </span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: blockColor }}>{block.name}</span>
+                  </div>
+                  <span className="mono" style={{ fontSize: 11, color: 'var(--d-text-faint)' }}>{doneSets}/{totalBSets}</span>
+                </div>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  {block.session_exercises.map(ex => {
+                    const exDone = ex.sets.length > 0 && ex.sets.every(s => s.done);
+                    const exPartial = !exDone && ex.sets.some(s => s.done);
+                    return (
+                      <div key={ex.id} style={{ padding: '10px 12px', background: exDone ? 'rgba(43,182,115,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${exDone ? 'rgba(43,182,115,0.25)' : 'var(--d-border)'}`, borderRadius: 10 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ fontSize: 13, fontWeight: 600, color: exDone ? 'var(--green)' : 'var(--d-text)' }}>{ex.name}</span>
+                              {ex.level && <LevelBadge level={ex.level as LevelId}/>}
+                            </div>
+                            {ex.note && <div style={{ fontSize: 11, color: 'var(--d-text-muted)', marginTop: 3 }}>{ex.note}</div>}
+                          </div>
+                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                            <div className="mono" style={{ fontSize: 12, color: exDone ? 'var(--green)' : exPartial ? 'var(--amber)' : 'var(--d-text-faint)', fontWeight: 700 }}>
+                              {ex.sets.filter(s => s.done).length}/{ex.sets.length}
+                            </div>
+                            <div style={{ fontSize: 9, color: 'var(--d-text-faint)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>series</div>
+                          </div>
+                        </div>
+                        {ex.sets.length > 0 && (
+                          <div style={{ marginTop: 8, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                            {ex.sets.map((s, si) => (
+                              <div key={s.id} style={{ padding: '3px 8px', borderRadius: 5, background: s.done ? 'rgba(43,182,115,0.20)' : 'rgba(255,255,255,0.06)', border: `1px solid ${s.done ? 'rgba(43,182,115,0.35)' : 'var(--d-border)'}`, fontSize: 11, color: s.done ? 'var(--green)' : 'var(--d-text-faint)', fontFamily: 'var(--font-mono)' }}>
+                                {si + 1}. {s.reps || '—'} {s.load && s.load !== '—' ? `· ${isNaN(Number(s.load)) ? s.load : `${s.load}kg`}` : ''}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ────────────────────────────────────────────────────
 
 export default function TodayPage() {
@@ -249,9 +366,22 @@ export default function TodayPage() {
   const [session, setSession] = useState<SessRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeExercise, setActiveExercise] = useState<{ ex: ExRow; catId: CategoryId } | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
+
+  // ─── Timer ─────────────────────────────────────────────────
+  const [timerStart, setTimerStart] = useState<number | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+
+  // ─── Feedback ──────────────────────────────────────────────
   const [feedback, setFeedback] = useState({ sleepHours: 7, energyLevel: 0, painLevel: '' });
   const [feedbackSaving, setFeedbackSaving] = useState(false);
   const [feedbackSaved, setFeedbackSaved] = useState(false);
+  const hasUserEdited = useRef(false);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const latestFeedbackRef = useRef(feedback);
+  const latestSessionIdRef = useRef<string | undefined>(undefined);
+
+  latestFeedbackRef.current = feedback;
 
   const fetchSession = useCallback(async () => {
     if (!athleteId) { setLoading(false); return; }
@@ -296,8 +426,10 @@ export default function TodayPage() {
           })),
       };
       setSession(sess);
+      latestSessionIdRef.current = sess.id;
     } else {
       setSession(null);
+      latestSessionIdRef.current = undefined;
     }
     setLoading(false);
   }, [athleteId]);
@@ -306,6 +438,27 @@ export default function TodayPage() {
     if (!authLoading) fetchSession();
   }, [authLoading, fetchSession]);
 
+  // Restore timer from localStorage when session loads
+  useEffect(() => {
+    if (!session?.id) return;
+    const stored = localStorage.getItem(`vitta_timer_${session.id}`);
+    if (stored) {
+      const start = parseInt(stored, 10);
+      setTimerStart(start);
+      setElapsed(Math.floor((Date.now() - start) / 1000));
+    }
+  }, [session?.id]);
+
+  // Timer tick
+  useEffect(() => {
+    if (timerStart === null) return;
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - timerStart) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [timerStart]);
+
+  // Load existing feedback from DB
   useEffect(() => {
     if (!session?.id) return;
     const supabase = createClient();
@@ -315,21 +468,53 @@ export default function TodayPage() {
       .eq('session_id', session.id)
       .maybeSingle()
       .then(({ data }) => {
-        if (data) setFeedback({ sleepHours: data.sleep_hours ?? 7, energyLevel: data.energy_level ?? 0, painLevel: data.pain_level ?? '' });
+        if (data) {
+          const fb = { sleepHours: data.sleep_hours ?? 7, energyLevel: data.energy_level ?? 0, painLevel: data.pain_level ?? '' };
+          setFeedback(fb);
+          latestFeedbackRef.current = fb;
+        }
+        // Reset dirty flag after loading so we don't auto-save the loaded values
+        hasUserEdited.current = false;
       });
   }, [session?.id]);
 
-  async function saveFeedback(fb: { sleepHours: number; energyLevel: number; painLevel: string }) {
-    if (!session?.id) return;
-    setFeedbackSaving(true);
-    const supabase = createClient();
-    await supabase.from('session_feedback').upsert(
-      { session_id: session.id, sleep_hours: fb.sleepHours, energy_level: fb.energyLevel || null, pain_level: fb.painLevel || null },
-      { onConflict: 'session_id' }
-    );
-    setFeedbackSaving(false);
-    setFeedbackSaved(true);
-    setTimeout(() => setFeedbackSaved(false), 2000);
+  // Auto-save feedback (debounced 800ms)
+  useEffect(() => {
+    if (!hasUserEdited.current) return;
+    clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(async () => {
+      const sid = latestSessionIdRef.current;
+      const fb = latestFeedbackRef.current;
+      if (!sid) return;
+      setFeedbackSaving(true);
+      const supabase = createClient();
+      await supabase.from('session_feedback').upsert(
+        { session_id: sid, sleep_hours: fb.sleepHours, energy_level: fb.energyLevel || null, pain_level: fb.painLevel || null },
+        { onConflict: 'session_id' }
+      );
+      setFeedbackSaving(false);
+      setFeedbackSaved(true);
+      setTimeout(() => setFeedbackSaved(false), 2000);
+    }, 800);
+    return () => clearTimeout(autoSaveTimerRef.current);
+  }, [feedback]);
+
+  function handleFeedbackChange(updates: Partial<typeof feedback>) {
+    hasUserEdited.current = true;
+    setFeedback(f => ({ ...f, ...updates }));
+  }
+
+  function startTimer() {
+    const now = Date.now();
+    setTimerStart(now);
+    setElapsed(0);
+    if (session?.id) localStorage.setItem(`vitta_timer_${session.id}`, String(now));
+  }
+
+  function stopTimer() {
+    setTimerStart(null);
+    setElapsed(0);
+    if (session?.id) localStorage.removeItem(`vitta_timer_${session.id}`);
   }
 
   async function toggleSet(setId: string, done: boolean) {
@@ -374,6 +559,7 @@ export default function TodayPage() {
   const doneSets  = session.session_blocks.reduce((s, b) => s + b.session_exercises.reduce((s2, e) => s2 + e.sets.filter(set => set.done).length, 0), 0);
   const mainBlock = session.session_blocks.find(b => !['movilidad','preventivos'].includes(b.category)) || session.session_blocks[0];
   const mainCat   = mainBlock ? (CATEGORIES[mainBlock.category] || CATEGORIES.empuje) : CATEGORIES.empuje;
+  const sessionActive = timerStart !== null;
 
   return (
     <div style={{ padding: '16px 16px 28px' }}>
@@ -400,18 +586,43 @@ export default function TodayPage() {
           {session.block && <span style={{ fontSize: 11, color: 'var(--d-text-muted)', letterSpacing: '0.04em' }}>{session.block}</span>}
         </div>
         <h1 className="display" style={{ fontSize: 24, margin: '8px 0 14px', color: 'var(--vitta-cream)', maxWidth: '92%' }}>{session.title}</h1>
-        <div style={{ display: 'flex', gap: 18 }}>
-          <Stat label="Duración" value={`${session.duration}'`}/>
-          <Stat label="RPE"      value={session.rpe_target}/>
-          <Stat label="Series"   value={`${doneSets}/${totalSets}`}/>
+        <div style={{ display: 'flex', gap: 18, alignItems: 'flex-end', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', gap: 18 }}>
+            <Stat label="Duración" value={`${session.duration}'`}/>
+            <Stat label="RPE"      value={session.rpe_target}/>
+            <Stat label="Series"   value={`${doneSets}/${totalSets}`}/>
+          </div>
+          {/* Timer badge */}
+          {sessionActive && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 20, background: 'rgba(43,182,115,0.18)', border: '1px solid rgba(43,182,115,0.35)' }}>
+              <div className="pulse-dot" style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--green)' }}/>
+              <span className="display tnum" style={{ fontSize: 18, color: 'var(--green)' }}>{formatTime(elapsed)}</span>
+            </div>
+          )}
         </div>
       </div>
 
+      {/* Action buttons */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 14 }}>
-        <button style={{ padding: '12px 14px', borderRadius: 14, border: 'none', background: 'var(--vitta-cream)', color: 'var(--vitta-navy-ink)', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-          <PlayIcon size={14}/> Iniciar sesión
-        </button>
-        <button style={{ padding: '12px 14px', borderRadius: 14, background: 'transparent', color: 'var(--d-text)', border: '1px solid var(--d-border-strong)', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+        {!sessionActive ? (
+          <button
+            onClick={startTimer}
+            style={{ padding: '12px 14px', borderRadius: 14, border: 'none', background: 'var(--vitta-cream)', color: 'var(--vitta-navy-ink)', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+          >
+            <PlayIcon size={14}/> Iniciar sesión
+          </button>
+        ) : (
+          <button
+            onClick={stopTimer}
+            style={{ padding: '12px 14px', borderRadius: 14, border: '1px solid rgba(43,182,115,0.4)', background: 'rgba(43,182,115,0.12)', color: 'var(--green)', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+          >
+            <PauseIcon size={14}/> Finalizar
+          </button>
+        )}
+        <button
+          onClick={() => setShowDetails(true)}
+          style={{ padding: '12px 14px', borderRadius: 14, background: 'transparent', color: 'var(--d-text)', border: '1px solid var(--d-border-strong)', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+        >
           <InfoIcon size={14}/> Ver detalles
         </button>
       </div>
@@ -428,8 +639,13 @@ export default function TodayPage() {
         ))}
       </div>
 
+      {/* Wellness / Bienestar */}
       <div style={{ marginTop: 20, background: 'var(--d-surface)', border: '1px solid var(--d-border)', borderRadius: 16, padding: 16 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--d-text-faint)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Después de la sesión</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--d-text-faint)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Después de la sesión</div>
+          {feedbackSaving && <span style={{ fontSize: 10, color: 'var(--d-text-faint)' }}>Guardando…</span>}
+          {feedbackSaved && !feedbackSaving && <span style={{ fontSize: 10, color: 'var(--green)', fontWeight: 600 }}>✓ Guardado</span>}
+        </div>
         <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>¿Cómo te sentiste hoy?</div>
 
         {/* Sleep hours stepper */}
@@ -437,12 +653,12 @@ export default function TodayPage() {
           <div style={{ fontSize: 11, color: 'var(--d-text-muted)', marginBottom: 8, fontWeight: 600, letterSpacing: '0.04em' }}>Horas de sueño</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <button
-              onClick={() => setFeedback(f => ({ ...f, sleepHours: Math.max(4, f.sleepHours - 0.5) }))}
+              onClick={() => handleFeedbackChange({ sleepHours: Math.max(4, feedback.sleepHours - 0.5) })}
               style={{ width: 34, height: 34, borderRadius: 8, border: '1px solid var(--d-border-strong)', background: 'transparent', color: 'var(--d-text)', fontSize: 20, cursor: 'pointer', display: 'grid', placeItems: 'center', lineHeight: 1 }}
             >−</button>
             <span className="display tnum" style={{ fontSize: 24, color: 'var(--vitta-cream)', minWidth: 52, textAlign: 'center' }}>{feedback.sleepHours}h</span>
             <button
-              onClick={() => setFeedback(f => ({ ...f, sleepHours: Math.min(12, f.sleepHours + 0.5) }))}
+              onClick={() => handleFeedbackChange({ sleepHours: Math.min(12, feedback.sleepHours + 0.5) })}
               style={{ width: 34, height: 34, borderRadius: 8, border: '1px solid var(--d-border-strong)', background: 'transparent', color: 'var(--d-text)', fontSize: 20, cursor: 'pointer', display: 'grid', placeItems: 'center', lineHeight: 1 }}
             >+</button>
           </div>
@@ -457,7 +673,7 @@ export default function TodayPage() {
             {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
               <button
                 key={n}
-                onClick={() => setFeedback(f => ({ ...f, energyLevel: n }))}
+                onClick={() => handleFeedbackChange({ energyLevel: n })}
                 style={{ flex: 1, height: 30, borderRadius: 4, border: 'none', background: feedback.energyLevel >= n ? 'var(--vitta-blue)' : 'var(--d-border)', color: feedback.energyLevel >= n ? '#fff' : 'var(--d-text-faint)', fontSize: 10, fontWeight: 700, cursor: 'pointer', transition: 'background 0.1s' }}
               >{n}</button>
             ))}
@@ -465,26 +681,18 @@ export default function TodayPage() {
         </div>
 
         {/* Pain level */}
-        <div style={{ marginBottom: 18 }}>
+        <div>
           <div style={{ fontSize: 11, color: 'var(--d-text-muted)', marginBottom: 8, fontWeight: 600, letterSpacing: '0.04em' }}>Nivel de dolor / molestia</div>
           <div style={{ display: 'flex', gap: 6 }}>
             {([{ v: 'ninguno', l: 'Ninguno' }, { v: 'leve', l: 'Leve' }, { v: 'moderado', l: 'Moderado' }, { v: 'fuerte', l: 'Fuerte' }] as const).map(opt => (
               <button
                 key={opt.v}
-                onClick={() => setFeedback(f => ({ ...f, painLevel: opt.v }))}
+                onClick={() => handleFeedbackChange({ painLevel: opt.v })}
                 style={{ flex: 1, padding: '7px 0', borderRadius: 8, border: `1px solid ${feedback.painLevel === opt.v ? 'var(--vitta-blue)' : 'var(--d-border)'}`, background: feedback.painLevel === opt.v ? 'rgba(46,107,214,0.20)' : 'transparent', color: feedback.painLevel === opt.v ? 'var(--vitta-blue-bright)' : 'var(--d-text-faint)', fontSize: 11, fontWeight: 600, cursor: 'pointer', transition: 'all 0.1s' }}
               >{opt.l}</button>
             ))}
           </div>
         </div>
-
-        <button
-          onClick={() => saveFeedback(feedback)}
-          disabled={feedbackSaving}
-          style={{ width: '100%', padding: '11px', borderRadius: 10, border: 'none', background: feedbackSaved ? 'var(--green)' : 'var(--vitta-blue)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: feedbackSaving ? 'wait' : 'pointer', transition: 'background 0.2s', opacity: feedbackSaving ? 0.7 : 1 }}
-        >
-          {feedbackSaved ? '✓ Guardado' : feedbackSaving ? 'Guardando…' : 'Guardar bienestar'}
-        </button>
       </div>
 
       {activeExercise && (
@@ -492,6 +700,10 @@ export default function TodayPage() {
           exercise={toSessionExercise(activeExercise.ex, activeExercise.catId)}
           onClose={() => setActiveExercise(null)}
         />
+      )}
+
+      {showDetails && (
+        <SessionDetailsSheet session={session} onClose={() => setShowDetails(false)}/>
       )}
     </div>
   );

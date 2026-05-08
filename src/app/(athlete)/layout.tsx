@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { AthleteProvider, useAthlete } from '@/lib/athlete-context';
 import { createClient } from '@/lib/supabase';
-import { VittaMark, HomeIcon, CalendarIcon, TrendIcon, MessageIcon, BellIcon, LogOutIcon, LockIcon, CheckIcon } from '@/components/icons';
+import { VittaMark, HomeIcon, CalendarIcon, TrendIcon, MessageIcon, BellIcon, LogOutIcon, LockIcon, CheckIcon, XIcon } from '@/components/icons';
 import type { ReactNode } from 'react';
 
 const TABS = [
@@ -12,6 +12,107 @@ const TABS = [
   { href: '/stats',  label: 'Progreso',Icon: TrendIcon    },
   { href: '/coach',  label: 'Coach',   Icon: MessageIcon  },
 ];
+
+interface CoachMsg {
+  id: string;
+  text: string;
+  created_at: string;
+}
+
+function NotifPanel({ athleteId, onClose }: { athleteId: string; onClose: () => void }) {
+  const [msgs, setMsgs] = useState<CoachMsg[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase
+      .from('messages')
+      .select('id, text, created_at')
+      .eq('thread_id', athleteId)
+      .eq('from_role', 'coach')
+      .order('created_at', { ascending: false })
+      .limit(15)
+      .then(({ data }) => {
+        setMsgs(data || []);
+        setLoading(false);
+        // Mark all as seen
+        localStorage.setItem('vitta_notif_last_seen', new Date().toISOString());
+      });
+  }, [athleteId]);
+
+  function formatDate(iso: string) {
+    const d = new Date(iso);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    const diffH = Math.floor(diffMin / 60);
+    const diffDays = Math.floor(diffH / 24);
+    if (diffMin < 1) return 'Ahora';
+    if (diffMin < 60) return `Hace ${diffMin} min`;
+    if (diffH < 24) return `Hace ${diffH}h`;
+    if (diffDays === 1) return 'Ayer';
+    return d.toLocaleDateString('es-CL', { day: 'numeric', month: 'short' });
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+      <div onClick={onClose} style={{ flex: 1, background: 'rgba(0,0,0,0.55)' }}/>
+      <div className="thin-scroll-dark" style={{
+        background: 'var(--d-bg)', borderRadius: '20px 20px 0 0',
+        maxHeight: '70vh', overflowY: 'auto',
+        boxShadow: '0 -8px 40px rgba(0,0,0,0.5)',
+      }}>
+        {/* Header */}
+        <div style={{ position: 'sticky', top: 0, background: 'var(--d-bg)', padding: '14px 16px 12px', borderBottom: '1px solid var(--d-border)', zIndex: 1 }}>
+          <div style={{ width: 40, height: 4, borderRadius: 2, background: 'var(--d-border-strong)', margin: '0 auto 14px' }}/>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--d-text)' }}>Mensajes del coach</div>
+              <div style={{ fontSize: 11, color: 'var(--d-text-muted)', marginTop: 2 }}>Últimas comunicaciones</div>
+            </div>
+            <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 16, border: '1px solid var(--d-border)', background: 'rgba(255,255,255,0.06)', color: 'var(--d-text-muted)', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+              <XIcon size={15}/>
+            </button>
+          </div>
+        </div>
+
+        {/* Messages */}
+        <div style={{ padding: '8px 16px 32px' }}>
+          {loading ? (
+            <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--d-text-muted)', fontSize: 13 }}>Cargando…</div>
+          ) : msgs.length === 0 ? (
+            <div style={{ padding: '32px 0', textAlign: 'center' }}>
+              <div style={{ fontSize: 28, marginBottom: 10 }}>💬</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--d-text)', marginBottom: 5 }}>Sin mensajes aún</div>
+              <div style={{ fontSize: 12, color: 'var(--d-text-muted)' }}>Tu coach no ha enviado mensajes todavía.</div>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+              {msgs.map(msg => (
+                <div key={msg.id} style={{ padding: '12px 14px', background: 'var(--d-surface)', border: '1px solid var(--d-border)', borderRadius: 14, borderTopLeftRadius: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <div style={{ width: 26, height: 26, borderRadius: 13, background: 'var(--vitta-blue)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>C</div>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--d-text)' }}>Coach</div>
+                      <div style={{ fontSize: 10, color: 'var(--d-text-faint)' }}>{formatDate(msg.created_at)}</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--d-text)', lineHeight: 1.5 }}>{msg.text}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function AthleteLayoutInner({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -25,9 +126,29 @@ function AthleteLayoutInner({ children }: { children: ReactNode }) {
   const [pwDone, setPwDone]         = useState(false);
   const [pwError, setPwError]       = useState('');
 
+  // Bell / notifications
+  const [notifOpen, setNotifOpen]   = useState(false);
+  const [hasUnread, setHasUnread]   = useState(false);
+
   useEffect(() => {
     if (!loading && !athleteId) router.replace('/login');
   }, [loading, athleteId, router]);
+
+  // Check for unread coach messages on mount
+  useEffect(() => {
+    if (!athleteId) return;
+    const lastSeen = localStorage.getItem('vitta_notif_last_seen') || '1970-01-01T00:00:00Z';
+    const supabase = createClient();
+    supabase
+      .from('messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('thread_id', athleteId)
+      .eq('from_role', 'coach')
+      .gt('created_at', lastSeen)
+      .then(({ count }) => {
+        setHasUnread((count ?? 0) > 0);
+      });
+  }, [athleteId]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -88,9 +209,18 @@ function AthleteLayoutInner({ children }: { children: ReactNode }) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <button style={{ position: 'relative', width: 32, height: 32, borderRadius: 16, border: '1px solid var(--d-border)', background: 'rgba(255,255,255,0.04)', color: 'var(--d-text)', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+          {/* Bell button */}
+          <button
+            onClick={() => {
+              setNotifOpen(true);
+              setHasUnread(false);
+            }}
+            style={{ position: 'relative', width: 32, height: 32, borderRadius: 16, border: '1px solid var(--d-border)', background: 'rgba(255,255,255,0.04)', color: 'var(--d-text)', display: 'grid', placeItems: 'center', cursor: 'pointer' }}
+          >
             <BellIcon size={16}/>
-            <span style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: '50%', background: 'var(--vitta-blue)' }}/>
+            {hasUnread && (
+              <span style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: '50%', background: 'var(--vitta-blue)' }}/>
+            )}
           </button>
 
           {/* Avatar + dropdown */}
@@ -184,6 +314,11 @@ function AthleteLayoutInner({ children }: { children: ReactNode }) {
           );
         })}
       </div>
+
+      {/* Notification panel */}
+      {notifOpen && athleteId && (
+        <NotifPanel athleteId={athleteId} onClose={() => setNotifOpen(false)}/>
+      )}
     </div>
   );
 }
