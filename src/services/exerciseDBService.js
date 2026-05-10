@@ -40,28 +40,44 @@ function setCache(data) {
 
 let _memo = null; // in-memory pointer so we don't re-parse localStorage every call
 
-export async function getAllExercises() {
-  if (_memo) return _memo;
+function extractArray(json) {
+  if (Array.isArray(json)) return json;
+  if (Array.isArray(json?.data)) return json.data;
+  if (Array.isArray(json?.exercises)) return json.exercises;
+  return [];
+}
+
+// Paginates through the full dataset (100 per request) until exhausted.
+// onProgress(loaded) is called after each page so the UI can show progress.
+export async function getAllExercises(onProgress) {
+  if (_memo) { onProgress?.(_memo.length); return _memo; }
 
   const cached = getCache();
-  if (cached) { _memo = cached; return cached; }
+  if (cached) { _memo = cached; onProgress?.(cached.length); return cached; }
 
-  // Try progressively smaller limits if the API caps results
-  for (const limit of [1500, 1000, 500]) {
-    const res = await fetch(`${BASE_URL}/exercises?limit=${limit}`);
-    if (!res.ok) throw new Error(`ExerciseDB ${res.status}`);
-    const json = await res.json();
-    const data = Array.isArray(json) ? json
-      : Array.isArray(json?.data) ? json.data
-      : Array.isArray(json?.exercises) ? json.exercises
-      : null;
-    if (data && data.length > 0) {
-      _memo = data;
-      setCache(data);
-      return data;
+  const PAGE = 100;
+  let all = [];
+  let offset = 0;
+
+  while (true) {
+    const res = await fetch(`${BASE_URL}/exercises?limit=${PAGE}&offset=${offset}`);
+    if (!res.ok) {
+      if (all.length > 0) break; // use partial results rather than throwing
+      throw new Error(`ExerciseDB ${res.status}`);
     }
+    const page = extractArray(await res.json());
+    if (page.length === 0) break;
+    all = all.concat(page);
+    onProgress?.(all.length);
+    if (page.length < PAGE) break; // last page
+    offset += PAGE;
   }
-  throw new Error('ExerciseDB returned no exercises');
+
+  if (all.length === 0) throw new Error('ExerciseDB no devolvió ejercicios');
+
+  _memo = all;
+  setCache(all);
+  return all;
 }
 
 export function clearCache() {
