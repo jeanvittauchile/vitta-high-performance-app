@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase';
 import { CATEGORIES, LEVELS } from '@/lib/constants';
 import { getCategoryIcon, PlusIcon, SearchIcon, CopyIcon, XIcon, VideoIcon, ExternalLinkIcon, PencilIcon, CheckIcon } from '@/components/icons';
@@ -518,6 +519,9 @@ export default function LibraryPage() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-ghost"><CopyIcon size={13}/>Importar</button>
+          <Link href="/exercises/explore" className="btn btn-ghost" style={{ textDecoration: 'none' }}>
+            Explorar ExerciseDB
+          </Link>
           <button className="btn btn-primary" onClick={() => setShowNewExModal(true)}>
             <PlusIcon size={13}/>Nuevo ejercicio
           </button>
