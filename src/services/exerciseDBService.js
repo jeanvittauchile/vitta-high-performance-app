@@ -1,5 +1,5 @@
 // Requests go through our Next.js proxy to avoid CORS restrictions.
-// The proxy forwards to https://exercisedb.dev/api/v1 server-side.
+// The proxy forwards to https://oss.exercisedb.dev/api/v1 server-side.
 const BASE_URL = '/api/exercisedb';
 const CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
@@ -113,15 +113,23 @@ export async function fetchEquipmentList() {
 
 // ─── Supabase save ───────────────────────────────────────────
 
+// OSS API response shape:
+//   exerciseId, name, gifUrl, instructions[],
+//   bodyParts[], targetMuscles[], secondaryMuscles[], equipments[]
+
 export function mapToVittaRow(ex) {
+  const bodyPart = ex.bodyParts?.[0] ?? ex.bodyPart ?? '';
+  const muscle   = ex.targetMuscles?.[0] ?? ex.target ?? null;
+  const equip    = ex.equipments?.[0]    ?? ex.equipment ?? null;
+  const exId     = ex.exerciseId         ?? ex.id ?? '';
   return {
-    slug:      `exdb_${ex.id}`,
+    slug:      `exdb_${exId}`,
     name:      ex.name,
-    category:  BODY_PART_TO_CATEGORY[ex.bodyPart] || 'movilidad',
+    category:  BODY_PART_TO_CATEGORY[bodyPart] || 'movilidad',
     level:     'basico',
-    muscle:    ex.target      || null,
-    equipment: ex.equipment   || null,
-    gif_url:   ex.gifUrl      || null,
+    muscle,
+    equipment: equip,
+    gif_url:   ex.gifUrl ?? null,
     cues:      ex.instructions?.length ? ex.instructions : null,
     source:    'exercisedb',
   };

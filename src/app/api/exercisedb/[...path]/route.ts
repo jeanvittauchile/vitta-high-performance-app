@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const UPSTREAM = 'https://exercisedb.dev/api/v1';
+const UPSTREAM = 'https://oss.exercisedb.dev/api/v1';
 
 export async function GET(
   request: NextRequest,

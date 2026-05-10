@@ -68,11 +68,17 @@ export default function ExerciseDBCard({ exercise }) {
           {exercise.name}
         </div>
 
-        {/* Chips */}
+        {/* Chips — OSS API uses arrays; old API used strings */}
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          <Chip color="var(--vitta-blue)">{exercise.target}</Chip>
-          <Chip>{exercise.equipment}</Chip>
-          <Chip>{exercise.bodyPart}</Chip>
+          {(exercise.targetMuscles ?? (exercise.target ? [exercise.target] : [])).map(m => (
+            <Chip key={m} color="var(--vitta-blue)">{m}</Chip>
+          ))}
+          {(exercise.equipments ?? (exercise.equipment ? [exercise.equipment] : [])).map(e => (
+            <Chip key={e}>{e}</Chip>
+          ))}
+          {(exercise.bodyParts ?? (exercise.bodyPart ? [exercise.bodyPart] : [])).map(b => (
+            <Chip key={b}>{b}</Chip>
+          ))}
         </div>
 
         {/* Instructions */}
