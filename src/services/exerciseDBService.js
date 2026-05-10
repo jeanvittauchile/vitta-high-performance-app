@@ -1,24 +1,8 @@
 // Requests go through our Next.js proxy to avoid CORS restrictions.
 // The proxy forwards to https://oss.exercisedb.dev/api/v1 server-side.
 const BASE_URL = '/api/exercisedb';
+const CACHE_KEY = 'vitta_exdb_all';
 const CACHE_TTL = 60 * 60 * 1000; // 1 hour
-
-// ─── Known filter values (fallback if list endpoints fail) ───
-const FALLBACK_BODY_PARTS = [
-  'back', 'cardio', 'chest', 'lower arms', 'lower legs',
-  'neck', 'shoulders', 'upper arms', 'upper legs', 'waist',
-];
-const FALLBACK_TARGETS = [
-  'abductors', 'abs', 'adductors', 'biceps', 'calves',
-  'cardiovascular system', 'delts', 'forearms', 'glutes', 'hamstrings',
-  'lats', 'pectorals', 'quads', 'traps', 'triceps', 'upper back',
-];
-const FALLBACK_EQUIPMENT = [
-  'band', 'barbell', 'body weight', 'cable', 'dumbbell',
-  'ez barbell', 'kettlebell', 'leverage machine', 'medicine ball',
-  'olympic barbell', 'resistance band', 'rope', 'smith machine',
-  'stability ball', 'weighted',
-];
 
 // ─── ExerciseDB bodyPart → Vitta CategoryId ──────────────────
 const BODY_PART_TO_CATEGORY = {
@@ -36,94 +20,87 @@ const BODY_PART_TO_CATEGORY = {
 
 // ─── LocalStorage cache ──────────────────────────────────────
 
-function cacheKey(path) {
-  return 'vitta_exdb_' + path.replace(/[^a-z0-9]/gi, '_');
-}
-
-function getCache(key) {
+function getCache() {
   try {
-    const raw = localStorage.getItem(key);
+    const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
     const { data, ts } = JSON.parse(raw);
-    if (Date.now() - ts > CACHE_TTL) { localStorage.removeItem(key); return null; }
+    if (Date.now() - ts > CACHE_TTL) { localStorage.removeItem(CACHE_KEY); return null; }
     return data;
   } catch { return null; }
 }
 
-function setCache(key, data) {
+function setCache(data) {
   try {
-    localStorage.setItem(key, JSON.stringify({ data, ts: Date.now() }));
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ data, ts: Date.now() }));
   } catch { /* quota exceeded — skip */ }
 }
 
-// ─── Fetch helper ────────────────────────────────────────────
+// ─── Single source of truth: all exercises ───────────────────
 
-function extractArray(raw) {
-  if (Array.isArray(raw)) return raw;
-  if (raw && Array.isArray(raw.data)) return raw.data;
-  if (raw && Array.isArray(raw.exercises)) return raw.exercises;
-  return [];
+let _memo = null; // in-memory pointer so we don't re-parse localStorage every call
+
+export async function getAllExercises() {
+  if (_memo) return _memo;
+
+  const cached = getCache();
+  if (cached) { _memo = cached; return cached; }
+
+  // Try progressively smaller limits if the API caps results
+  for (const limit of [1500, 1000, 500]) {
+    const res = await fetch(`${BASE_URL}/exercises?limit=${limit}`);
+    if (!res.ok) throw new Error(`ExerciseDB ${res.status}`);
+    const json = await res.json();
+    const data = Array.isArray(json) ? json
+      : Array.isArray(json?.data) ? json.data
+      : Array.isArray(json?.exercises) ? json.exercises
+      : null;
+    if (data && data.length > 0) {
+      _memo = data;
+      setCache(data);
+      return data;
+    }
+  }
+  throw new Error('ExerciseDB returned no exercises');
 }
 
-async function apiFetch(path) {
-  const key = cacheKey(path);
-  const cached = getCache(key);
-  if (cached !== null) return cached;
-
-  const res = await fetch(`${BASE_URL}${path}`);
-  if (!res.ok) throw new Error(`ExerciseDB ${res.status}: ${path}`);
-  const json = await res.json();
-  const data = Array.isArray(json) ? json : extractArray(json);
-  setCache(key, data);
-  return data;
+export function clearCache() {
+  _memo = null;
+  try { localStorage.removeItem(CACHE_KEY); } catch {}
 }
 
-// ─── Public API ──────────────────────────────────────────────
+// ─── Field helpers (OSS API uses arrays; old API used strings) ─
 
-export async function fetchExercises(limit = 20, offset = 0) {
-  return apiFetch(`/exercises?limit=${limit}&offset=${offset}`);
-}
+export function getBodyParts(ex)  { return ex.bodyParts     ?? (ex.bodyPart  ? [ex.bodyPart]  : []); }
+export function getTargets(ex)    { return ex.targetMuscles ?? (ex.target    ? [ex.target]    : []); }
+export function getEquipments(ex) { return ex.equipments    ?? (ex.equipment ? [ex.equipment] : []); }
+export function getExId(ex)       { return ex.exerciseId    ?? ex.id ?? ''; }
 
-export async function fetchByBodyPart(bodyPart) {
-  return apiFetch(`/exercises/bodyPart/${encodeURIComponent(bodyPart)}`);
-}
-
-export async function fetchByTarget(muscle) {
-  return apiFetch(`/exercises/target/${encodeURIComponent(muscle)}`);
-}
-
-export async function fetchByEquipment(equipment) {
-  return apiFetch(`/exercises/equipment/${encodeURIComponent(equipment)}`);
-}
+// ─── Derived filter lists (built from real data) ─────────────
 
 export async function fetchBodyParts() {
-  try { return await apiFetch('/exercises/bodyPartList'); }
-  catch { return FALLBACK_BODY_PARTS; }
+  const all = await getAllExercises();
+  return [...new Set(all.flatMap(getBodyParts))].sort();
 }
 
 export async function fetchTargets() {
-  try { return await apiFetch('/exercises/targetList'); }
-  catch { return FALLBACK_TARGETS; }
+  const all = await getAllExercises();
+  return [...new Set(all.flatMap(getTargets))].sort();
 }
 
 export async function fetchEquipmentList() {
-  try { return await apiFetch('/exercises/equipmentList'); }
-  catch { return FALLBACK_EQUIPMENT; }
+  const all = await getAllExercises();
+  return [...new Set(all.flatMap(getEquipments))].sort();
 }
 
 // ─── Supabase save ───────────────────────────────────────────
 
-// OSS API response shape:
-//   exerciseId, name, gifUrl, instructions[],
-//   bodyParts[], targetMuscles[], secondaryMuscles[], equipments[]
-
 export function mapToVittaRow(ex) {
-  const bodyPart = ex.bodyParts?.[0] ?? ex.bodyPart ?? '';
-  const muscle   = ex.targetMuscles?.[0] ?? ex.target ?? null;
-  const equip    = ex.equipments?.[0]    ?? ex.equipment ?? null;
-  const exId     = ex.exerciseId         ?? ex.id ?? '';
+  const bodyPart = getBodyParts(ex)[0]  ?? '';
+  const muscle   = getTargets(ex)[0]    ?? null;
+  const equip    = getEquipments(ex)[0] ?? null;
   return {
-    slug:      `exdb_${exId}`,
+    slug:      `exdb_${getExId(ex)}`,
     name:      ex.name,
     category:  BODY_PART_TO_CATEGORY[bodyPart] || 'movilidad',
     level:     'basico',
