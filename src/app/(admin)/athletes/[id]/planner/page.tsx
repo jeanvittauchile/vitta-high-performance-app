@@ -1044,6 +1044,14 @@ export default function PlannerPage() {
     setShowTemplateModal(false);
   }
 
+  async function handleDeletePlan() {
+    if (!confirm(`¿Eliminar el plan de ${MONTH_NAMES[currentMonth - 1]} ${currentYear}? Esta acción no se puede deshacer.`)) return;
+    const supabase = createClient();
+    await supabase.from('month_plans').delete()
+      .eq('athlete_id', id).eq('year', currentYear).eq('month', currentMonth);
+    setMonthPlan(defaultPlan());
+  }
+
   // ── Navigate months ────────────────────────────────────────
   function prevMonth() {
     if (currentMonth === 1) { setCurrentYear(y => y - 1); setCurrentMonth(12); } else setCurrentMonth(m => m - 1);
@@ -1119,6 +1127,10 @@ export default function PlannerPage() {
             </button>
             <button className="btn btn-ghost" onClick={() => setShowTemplateModal(true)}>
               <LayersIcon size={13}/>Aplicar plantilla
+            </button>
+            <button className="btn btn-ghost" onClick={handleDeletePlan}
+              style={{ color: '#D7474B' }}>
+              <TrashIcon size={13}/>Eliminar plan
             </button>
             <button className="btn btn-primary"
               onClick={() => { if (!selectedDay) { alert('Selecciona un día en el calendario primero.'); return; } setShowNewSession(true); }}>
