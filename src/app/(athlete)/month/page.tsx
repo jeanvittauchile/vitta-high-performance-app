@@ -249,8 +249,10 @@ export default function MonthPage() {
                   </div>
                   <div style={{ display: 'flex', gap: 3 }}>
                     {week.map((d, di) => {
-                      const t = DAY_TYPES[d] || DAY_TYPES.REST;
-                      return <div key={di} style={{ width: 6, height: 18, borderRadius: 1.5, background: d === 'REST' ? 'var(--d-border)' : t.color, opacity: d === 'REST' ? 0.5 : 0.85 }}/>;
+                      const hasActualSession = sessionStatus[weekDates[di]] !== undefined;
+                      const isRest = d === 'REST' && !hasActualSession;
+                      const color = isRest ? 'var(--d-border)' : (d !== 'REST' ? (DAY_TYPES[d]?.color || '#2E6BD6') : '#2E6BD6');
+                      return <div key={di} style={{ width: 6, height: 18, borderRadius: 1.5, background: color, opacity: isRest ? 0.5 : 0.85 }}/>;
                     })}
                   </div>
                 </button>
@@ -258,12 +260,15 @@ export default function MonthPage() {
                 {expanded && (
                   <div style={{ padding: '0 8px 12px', display: 'grid', gap: 5 }}>
                     {week.map((d, di) => {
-                      const t = DAY_TYPES[d] || DAY_TYPES.REST;
                       const date = cellDate(year, month, wi, di);
                       const dateISO = date.toISOString().slice(0, 10);
                       const isToday = dateISO === todayISO;
                       const dayNum = date.getDate();
-                      const hasSession = d !== 'REST' || !!sessionStatus[dateISO];
+                      const hasActualSession = sessionStatus[dateISO] !== undefined;
+                      const hasSession = d !== 'REST' || hasActualSession;
+                      const t = (d === 'REST' && hasActualSession)
+                        ? { label: 'Programado', color: '#2E6BD6', bg: 'rgba(46,107,214,0.14)' }
+                        : (DAY_TYPES[d] || DAY_TYPES.REST);
                       const isSelected = selectedDayISO === dateISO;
                       const sessionData = daySessions[dateISO];
                       const completion = sessionStatus[dateISO];
