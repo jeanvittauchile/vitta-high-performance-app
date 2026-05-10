@@ -498,105 +498,299 @@ function EditBlockForm({ block, onSaved, onCancel }: {
 
 // ─── Plan Templates ──────────────────────────────────────────
 
-const PLAN_TEMPLATES: { id: string; name: string; description: string; plan: DayType[][] }[] = [
-  {
-    id: 'vitta',
-    name: 'Estándar Vitta',
-    description: 'Push · Pull · Core + ENV · AER con descarga en S4',
-    plan: [
-      ['EMP','TRC','ZM','MOV','ENV','AER','REST'],
-      ['EMP','TRC','ZM','MOV','ENV','AER','REST'],
-      ['EMP','TRC','ZM','MOV','ENV','AER','REST'],
-      ['DELOAD','REST','TRC','MOV','TEST','REST','REST'],
-    ],
-  },
-  {
-    id: 'olimpico',
-    name: 'Mesociclo Olímpico',
-    description: 'ARR · ENV · JRK con test y descarga en S4',
-    plan: [
-      ['ARR','ENV','JRK','MOV','ARR','PRV','REST'],
-      ['ENV','ARR','JRK','MOV','ENV','PRV','REST'],
-      ['ARR','ENV','JRK','MOV','ARR','AER','REST'],
-      ['DELOAD','REST','MOV','REST','TEST','REST','REST'],
-    ],
-  },
-  {
-    id: 'fuerza',
-    name: 'Fuerza Base',
-    description: 'EMP y TRC alternados con ZM y AER',
-    plan: [
-      ['EMP','TRC','ZM','REST','EMP','TRC','REST'],
-      ['ZM','EMP','TRC','MOV','EMP','TRC','REST'],
-      ['EMP','TRC','ZM','REST','EMP','AER','REST'],
-      ['TRC','REST','ZM','MOV','REST','REST','REST'],
-    ],
-  },
-  {
-    id: 'aerobico',
-    name: 'Aeróbico + Prevención',
-    description: 'AER diario con preventivos y movilidad',
-    plan: [
-      ['AER','PRV','MOV','AER','PRV','AER','REST'],
-      ['AER','PRV','ZM','AER','PRV','AER','REST'],
-      ['AER','PRV','MOV','AER','COR','AER','REST'],
-      ['AER','REST','MOV','AER','REST','REST','REST'],
-    ],
-  },
-];
+interface DbPlanTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  plan: DayType[][];
+  exercises: Record<string, string[]>;
+  is_builtin: boolean;
+}
 
-function TemplatePickerModal({ onClose, onApply }: {
+const DAY_TYPE_KEYS = Object.keys(DAY_TYPES) as DayType[];
+
+// ── Create Template Modal ─────────────────────────────────────
+
+function CreateTemplateModal({ onClose, onCreated }: {
+  onClose: () => void;
+  onCreated: (tpl: DbPlanTemplate) => void;
+}) {
+  const [name, setName]               = useState('');
+  const [description, setDescription] = useState('');
+  const [grid, setGrid]               = useState<DayType[][]>(defaultPlan());
+  const [exercises, setExercises]     = useState<Record<string, string>>({});
+  const [saving, setSaving]           = useState(false);
+  const [error, setError]             = useState('');
+
+  const usedTypes = Array.from(new Set(
+    grid.flat().filter(d => !['REST','MOV','DELOAD','TEST'].includes(d))
+  ));
+
+  function setCell(wi: number, di: number, val: DayType) {
+    setGrid(prev => prev.map((w, i) => i === wi ? w.map((d, j) => j === di ? val : d) : w));
+  }
+
+  async function save() {
+    if (!name.trim()) { setError('El nombre es obligatorio.'); return; }
+    setSaving(true);
+    const exMap: Record<string, string[]> = {};
+    for (const [type, str] of Object.entries(exercises)) {
+      const list = str.split(',').map(s => s.trim()).filter(Boolean);
+      if (list.length) exMap[type] = list;
+    }
+    const supabase = createClient();
+    const { data, error: err } = await supabase
+      .from('plan_templates')
+      .insert({ name: name.trim(), description: description.trim() || null, plan: grid, exercises: exMap, is_builtin: false })
+      .select().single();
+    setSaving(false);
+    if (err) { setError(err.message); return; }
+    onCreated(data as DbPlanTemplate);
+  }
+
+  const inp: React.CSSProperties = {
+    width: '100%', padding: '8px 10px', borderRadius: 8,
+    border: '1px solid var(--border)', background: 'var(--surface)',
+    fontSize: 13, fontFamily: 'inherit', color: 'var(--text)', boxSizing: 'border-box',
+  };
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()}
+      style={{ position: 'fixed', inset: 0, zIndex: 1001, background: 'rgba(14,25,54,0.55)', display: 'grid', placeItems: 'center' }}>
+      <div className="card thin-scroll" style={{ width: 560, padding: 24, maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 18 }}>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>Nueva plantilla mensual</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 20 }}>×</button>
+        </div>
+
+        <div style={{ display: 'grid', gap: 12, marginBottom: 16 }}>
+          <div>
+            <label style={lblStyle}>Nombre</label>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="ej. Fuerza + Olímpico" style={inp}/>
+          </div>
+          <div>
+            <label style={lblStyle}>Descripción</label>
+            <input value={description} onChange={e => setDescription(e.target.value)} placeholder="Breve descripción del mesociclo" style={inp}/>
+          </div>
+        </div>
+
+        <div style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700, marginBottom: 8 }}>
+          Estructura semanal · selecciona el tipo por día
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '24px repeat(7, 1fr)', gap: 3, marginBottom: 16 }}>
+          <div/>
+          {['L','M','X','J','V','S','D'].map(d => (
+            <div key={d} style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textAlign: 'center', padding: '2px 0' }}>{d}</div>
+          ))}
+          {grid.map((week, wi) => (
+            <>
+              <div key={`lbl${wi}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: 'var(--text-muted)' }}>S{wi+1}</div>
+              {week.map((d, di) => {
+                const t = DAY_TYPES[d] || DAY_TYPES.REST;
+                return (
+                  <select key={`${wi}-${di}`} value={d} onChange={e => setCell(wi, di, e.target.value as DayType)} style={{
+                    padding: '5px 0', borderRadius: 4, border: `1px solid ${t.color}40`,
+                    background: t.bg, color: t.color, fontSize: 8, fontWeight: 700,
+                    fontFamily: 'inherit', cursor: 'pointer', textAlign: 'center', width: '100%',
+                  }}>
+                    {DAY_TYPE_KEYS.map(k => <option key={k} value={k}>{k}</option>)}
+                  </select>
+                );
+              })}
+            </>
+          ))}
+        </div>
+
+        {usedTypes.length > 0 && (
+          <>
+            <div style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700, marginBottom: 8 }}>
+              Ejercicios predefinidos por tipo de sesión
+            </div>
+            <div style={{ display: 'grid', gap: 10, marginBottom: 16 }}>
+              {usedTypes.map(type => {
+                const t = DAY_TYPES[type] || DAY_TYPES.REST;
+                return (
+                  <div key={type}>
+                    <label style={{ ...lblStyle, color: t.color }}>{t.label} ({type})</label>
+                    <input
+                      value={exercises[type] || ''}
+                      onChange={e => setExercises(prev => ({ ...prev, [type]: e.target.value }))}
+                      placeholder="Press banca, Dominadas, Press militar..."
+                      style={inp}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {error && <div style={{ fontSize: 12, color: 'var(--red)', padding: '7px 10px', background: 'rgba(215,71,75,0.08)', borderRadius: 6, marginBottom: 12 }}>{error}</div>}
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} className="btn btn-ghost">Cancelar</button>
+          <button onClick={save} disabled={saving} className="btn btn-primary">
+            <CheckIcon size={13}/>{saving ? 'Guardando...' : 'Crear plantilla'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Templates Modal ───────────────────────────────────────────
+
+function TemplatesModal({ onClose, onApply }: {
   onClose: () => void;
   onApply: (plan: DayType[][]) => void;
 }) {
-  const [selected, setSelected] = useState<string>(PLAN_TEMPLATES[0].id);
-  const tpl = PLAN_TEMPLATES.find(t => t.id === selected)!;
+  const [templates, setTemplates] = useState<DbPlanTemplate[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [selected, setSelected]   = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [deleting, setDeleting]   = useState<string | null>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.from('plan_templates').select('*').order('created_at').then(({ data }) => {
+      const list = (data || []) as DbPlanTemplate[];
+      setTemplates(list);
+      if (list.length) setSelected(list[0].id);
+      setLoading(false);
+    });
+  }, []);
+
+  async function deleteTemplate(id: string) {
+    if (!confirm('¿Eliminar esta plantilla?')) return;
+    setDeleting(id);
+    const supabase = createClient();
+    await supabase.from('plan_templates').delete().eq('id', id);
+    setTemplates(prev => {
+      const next = prev.filter(t => t.id !== id);
+      if (selected === id) setSelected(next[0]?.id ?? null);
+      return next;
+    });
+    setDeleting(null);
+  }
+
+  const tpl = templates.find(t => t.id === selected) ?? null;
+
+  if (showCreate) {
+    return (
+      <CreateTemplateModal
+        onClose={() => setShowCreate(false)}
+        onCreated={newTpl => {
+          setTemplates(prev => [...prev, newTpl]);
+          setSelected(newTpl.id);
+          setShowCreate(false);
+        }}
+      />
+    );
+  }
 
   return (
     <div onClick={e => e.target === e.currentTarget && onClose()}
       style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(14,25,54,0.55)', display: 'grid', placeItems: 'center' }}>
-      <div className="card" style={{ width: 520, padding: 24 }}>
+      <div className="card thin-scroll" style={{ width: 560, padding: 24, maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 18 }}>
-          <div style={{ fontSize: 15, fontWeight: 700 }}>Aplicar plantilla mensual</div>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>Plantillas mensuales</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 20 }}>×</button>
         </div>
-        <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
-          {PLAN_TEMPLATES.map(t => (
-            <button key={t.id} onClick={() => setSelected(t.id)} style={{
-              padding: '10px 14px', borderRadius: 8, textAlign: 'left', cursor: 'pointer',
-              border: selected === t.id ? '2px solid var(--vitta-blue)' : '1px solid var(--border)',
-              background: selected === t.id ? 'rgba(46,107,214,0.08)' : 'var(--surface-2)',
-              fontFamily: 'inherit',
-            }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{t.name}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>{t.description}</div>
-            </button>
-          ))}
-        </div>
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700, marginBottom: 8 }}>Vista previa · {tpl.name}</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 }}>
-            {['L','M','X','J','V','S','D'].map(d => (
-              <div key={d} style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textAlign: 'center', padding: '2px 0' }}>{d}</div>
-            ))}
-            {tpl.plan.map((week, wi) =>
-              week.map((dt, di) => {
-                const t2 = DAY_TYPES[dt] || DAY_TYPES.REST;
-                return (
-                  <div key={`${wi}-${di}`} style={{
-                    padding: '5px 2px', borderRadius: 4, textAlign: 'center',
-                    background: t2.bg, color: t2.color, fontSize: 8, fontWeight: 700,
-                  }}>{dt}</div>
-                );
-              })
+
+        {loading ? (
+          <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>Cargando...</div>
+        ) : (
+          <>
+            <div style={{ display: 'grid', gap: 6, marginBottom: 16 }}>
+              {templates.length === 0 && (
+                <div style={{ padding: '16px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                  No hay plantillas. Crea una nueva.
+                </div>
+              )}
+              {templates.map(t => (
+                <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <button onClick={() => setSelected(t.id)} style={{
+                    flex: 1, padding: '10px 14px', borderRadius: 8, textAlign: 'left', cursor: 'pointer',
+                    border: selected === t.id ? '2px solid var(--vitta-blue)' : '1px solid var(--border)',
+                    background: selected === t.id ? 'rgba(46,107,214,0.08)' : 'var(--surface-2)',
+                    fontFamily: 'inherit',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{t.name}</span>
+                      {t.is_builtin && (
+                        <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)', background: 'var(--surface)', padding: '1px 6px', borderRadius: 4, border: '1px solid var(--border)' }}>
+                          predefinida
+                        </span>
+                      )}
+                    </div>
+                    {t.description && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>{t.description}</div>}
+                  </button>
+                  {!t.is_builtin && (
+                    <button onClick={() => deleteTemplate(t.id)} disabled={deleting === t.id} title="Eliminar plantilla"
+                      style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: '#D7474B', cursor: 'pointer', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                      <TrashIcon size={14}/>
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {tpl && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700, marginBottom: 8 }}>
+                  Vista previa · {tpl.name}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, marginBottom: 10 }}>
+                  {['L','M','X','J','V','S','D'].map(d => (
+                    <div key={d} style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textAlign: 'center', padding: '2px 0' }}>{d}</div>
+                  ))}
+                  {tpl.plan.map((week, wi) =>
+                    week.map((dt, di) => {
+                      const t2 = DAY_TYPES[dt] || DAY_TYPES.REST;
+                      return (
+                        <div key={`${wi}-${di}`} style={{
+                          padding: '5px 2px', borderRadius: 4, textAlign: 'center',
+                          background: t2.bg, color: t2.color, fontSize: 8, fontWeight: 700,
+                        }}>{dt}</div>
+                      );
+                    })
+                  )}
+                </div>
+                {Object.keys(tpl.exercises).length > 0 && (
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    <div style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700 }}>
+                      Ejercicios predefinidos
+                    </div>
+                    {Object.entries(tpl.exercises).map(([type, exs]) => {
+                      const t2 = DAY_TYPES[type] || DAY_TYPES.REST;
+                      return (
+                        <div key={type} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: t2.color, background: t2.bg, padding: '2px 8px', borderRadius: 4, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                            {type}
+                          </span>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                            {exs.join(' · ')}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             )}
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} className="btn btn-ghost">Cancelar</button>
-          <button onClick={() => onApply(tpl.plan)} className="btn btn-primary">
-            <LayersIcon size={13}/>Aplicar plantilla
+          </>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: 14, marginTop: 4 }}>
+          <button onClick={() => setShowCreate(true)} className="btn btn-ghost">
+            <PlusIcon size={13}/>Nueva plantilla
           </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={onClose} className="btn btn-ghost">Cancelar</button>
+            <button onClick={() => tpl && onApply(tpl.plan)} disabled={!tpl} className="btn btn-primary">
+              <LayersIcon size={13}/>Aplicar plantilla
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -892,7 +1086,7 @@ export default function PlannerPage() {
         />
       )}
       {showTemplateModal && (
-        <TemplatePickerModal onClose={() => setShowTemplateModal(false)} onApply={handleApplyTemplate} />
+        <TemplatesModal onClose={() => setShowTemplateModal(false)} onApply={handleApplyTemplate} />
       )}
       {editSession && (
         <EditSessionModal session={editSession} onClose={() => setEditSession(null)}
