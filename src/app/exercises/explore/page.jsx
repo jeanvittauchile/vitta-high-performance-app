@@ -51,8 +51,8 @@ export default function ExplorePage() {
         data = await fetchExercises(PAGE_SIZE, offset);
       }
       setExercises(Array.isArray(data) ? data : []);
-    } catch {
-      setError('No se pudo conectar con ExerciseDB. Verifica tu conexión e intenta de nuevo.');
+    } catch (err) {
+      setError(`Error al cargar ejercicios: ${err.message}`);
     } finally {
       setLoading(false);
     }

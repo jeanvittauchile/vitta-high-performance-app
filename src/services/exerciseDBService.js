@@ -1,4 +1,6 @@
-const BASE_URL = 'https://exercisedb.dev/api/v1';
+// Requests go through our Next.js proxy to avoid CORS restrictions.
+// The proxy forwards to https://exercisedb.dev/api/v1 server-side.
+const BASE_URL = '/api/exercisedb';
 const CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
 // ─── Known filter values (fallback if list endpoints fail) ───
