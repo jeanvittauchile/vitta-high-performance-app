@@ -16,7 +16,6 @@ export default function ExplorePage() {
 
   const [all,        setAll]        = useState([]);
   const [loading,    setLoading]    = useState(true);
-  const [loaded,     setLoaded]     = useState(0);   // progress counter
   const [error,      setError]      = useState('');
   const [search,     setSearch]     = useState('');
   const [page,       setPage]       = useState(0);
@@ -38,7 +37,7 @@ export default function ExplorePage() {
       .from('exercises').select('slug').like('slug', 'exdb_%')
       .then(({ data }) => { if (data) setSavedSlugs(new Set(data.map(r => r.slug))); });
 
-    getAllExercises(n => setLoaded(n))
+    getAllExercises()
       .then(data => { setAll(data); setLoading(false); })
       .catch(err  => { setError(err.message); setLoading(false); });
   }, []);
@@ -151,15 +150,8 @@ export default function ExplorePage() {
         {/* ─── Content ─────────────────────────────────────────── */}
         {loading ? (
           <div style={{ padding: '80px 0', textAlign: 'center' }}>
-            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
-              Cargando ejercicios… {loaded > 0 && <span style={{ fontWeight: 700, color: 'var(--vitta-blue)' }}>{loaded}</span>}
-            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6 }}>Cargando biblioteca de ejercicios…</div>
             <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>Solo ocurre la primera vez — después es instantáneo</div>
-            {loaded > 0 && (
-              <div style={{ width: 180, height: 4, background: 'var(--border)', borderRadius: 4, margin: '12px auto 0', overflow: 'hidden' }}>
-                <div style={{ height: '100%', background: 'var(--vitta-blue)', borderRadius: 4, width: `${Math.min(100, (loaded / 1500) * 100)}%`, transition: 'width 0.3s' }}/>
-              </div>
-            )}
           </div>
         ) : error ? (
           <div style={{ padding: '60px 0', textAlign: 'center' }}>
