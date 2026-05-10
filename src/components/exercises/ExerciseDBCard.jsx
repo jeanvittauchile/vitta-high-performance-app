@@ -1,13 +1,13 @@
 'use client';
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase';
-import { saveToSupabase } from '@/services/exerciseDBService';
+import { saveToSupabase, mapToVittaRow } from '@/services/exerciseDBService';
 import { ChevronDown, CheckIcon, PlusIcon } from '@/components/icons';
 
-export default function ExerciseDBCard({ exercise }) {
+export default function ExerciseDBCard({ exercise, alreadySaved = false, onSaved }) {
   const [expanded,  setExpanded]  = useState(false);
   const [saving,    setSaving]    = useState(false);
-  const [saved,     setSaved]     = useState(false);
+  const [saved,     setSaved]     = useState(alreadySaved);
   const [error,     setError]     = useState('');
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imgError,  setImgError]  = useState(false);
@@ -17,7 +17,9 @@ export default function ExerciseDBCard({ exercise }) {
     setError('');
     try {
       await saveToSupabase(exercise, createClient());
+      const row = mapToVittaRow(exercise);
       setSaved(true);
+      onSaved?.(row.slug);
     } catch (err) {
       setError(err.message || 'Error al guardar');
     } finally {
@@ -26,6 +28,10 @@ export default function ExerciseDBCard({ exercise }) {
   }
 
   const hasInstructions = exercise.instructions?.length > 0;
+  // OSS API uses arrays; old format used strings
+  const targetMuscles = exercise.targetMuscles ?? (exercise.target ? [exercise.target] : []);
+  const equipments    = exercise.equipments    ?? (exercise.equipment ? [exercise.equipment] : []);
+  const bodyParts     = exercise.bodyParts     ?? (exercise.bodyPart  ? [exercise.bodyPart]  : []);
 
   return (
     <div style={{
@@ -36,6 +42,11 @@ export default function ExerciseDBCard({ exercise }) {
     }}>
       {/* GIF */}
       <div style={{ position: 'relative', background: '#f1f3f6', aspectRatio: '4/3', overflow: 'hidden' }}>
+        {saved && (
+          <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 1, background: 'rgba(43,182,115,0.90)', borderRadius: 6, padding: '2px 7px', fontSize: 10, fontWeight: 700, color: '#fff' }}>
+            En biblioteca
+          </div>
+        )}
         {!imgError ? (
           <>
             {!imgLoaded && (
@@ -49,16 +60,11 @@ export default function ExerciseDBCard({ exercise }) {
               loading="lazy"
               onLoad={() => setImgLoaded(true)}
               onError={() => setImgError(true)}
-              style={{
-                width: '100%', height: '100%', objectFit: 'cover',
-                opacity: imgLoaded ? 1 : 0, transition: 'opacity 0.3s',
-              }}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: imgLoaded ? 1 : 0, transition: 'opacity 0.3s' }}
             />
           </>
         ) : (
-          <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: 'var(--text-muted)', fontSize: 11 }}>
-            Sin imagen
-          </div>
+          <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: 'var(--text-muted)', fontSize: 11 }}>Sin imagen</div>
         )}
       </div>
 
@@ -68,35 +74,20 @@ export default function ExerciseDBCard({ exercise }) {
           {exercise.name}
         </div>
 
-        {/* Chips — OSS API uses arrays; old API used strings */}
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {(exercise.targetMuscles ?? (exercise.target ? [exercise.target] : [])).map(m => (
-            <Chip key={m} color="var(--vitta-blue)">{m}</Chip>
-          ))}
-          {(exercise.equipments ?? (exercise.equipment ? [exercise.equipment] : [])).map(e => (
-            <Chip key={e}>{e}</Chip>
-          ))}
-          {(exercise.bodyParts ?? (exercise.bodyPart ? [exercise.bodyPart] : [])).map(b => (
-            <Chip key={b}>{b}</Chip>
-          ))}
+          {targetMuscles.map(m => <Chip key={m} color="var(--vitta-blue)">{m}</Chip>)}
+          {equipments.map(e    => <Chip key={e}>{e}</Chip>)}
+          {bodyParts.map(b     => <Chip key={b}>{b}</Chip>)}
         </div>
 
-        {/* Instructions */}
         {hasInstructions && (
           <div>
             <button
               onClick={() => setExpanded(e => !e)}
-              style={{
-                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: 4,
-                color: 'var(--text-muted)', fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
-              }}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text-muted)', fontSize: 11, fontWeight: 600, fontFamily: 'inherit' }}
             >
               Instrucciones
-              <ChevronDown
-                size={12}
-                style={{ transform: expanded ? 'rotate(0)' : 'rotate(-90deg)', transition: 'transform 0.2s' }}
-              />
+              <ChevronDown size={12} style={{ transform: expanded ? 'rotate(0)' : 'rotate(-90deg)', transition: 'transform 0.2s' }}/>
             </button>
             {expanded && (
               <ol style={{ margin: '6px 0 0 16px', padding: 0, display: 'grid', gap: 4 }}>
@@ -109,12 +100,9 @@ export default function ExerciseDBCard({ exercise }) {
         )}
 
         {error && (
-          <div style={{ fontSize: 11, color: 'var(--red)', padding: '4px 8px', background: 'rgba(215,71,75,0.08)', borderRadius: 6 }}>
-            {error}
-          </div>
+          <div style={{ fontSize: 11, color: 'var(--red)', padding: '4px 8px', background: 'rgba(215,71,75,0.08)', borderRadius: 6 }}>{error}</div>
         )}
 
-        {/* Save button */}
         <button
           onClick={handleSave}
           disabled={saving || saved}
@@ -125,15 +113,13 @@ export default function ExerciseDBCard({ exercise }) {
             color: saved ? 'var(--green)' : '#fff',
             fontSize: 11, fontWeight: 700, fontFamily: 'inherit',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-            opacity: saving ? 0.7 : 1,
-            transition: 'background 0.2s',
+            opacity: saving ? 0.7 : 1, transition: 'background 0.2s',
           }}
         >
-          {saved ? (
-            <><CheckIcon size={12} stroke="currentColor" strokeWidth={2.5}/>Guardado en biblioteca</>
-          ) : saving ? 'Guardando…' : (
-            <><PlusIcon size={12}/>Guardar en biblioteca</>
-          )}
+          {saved
+            ? <><CheckIcon size={12} stroke="currentColor" strokeWidth={2.5}/>Ya en biblioteca</>
+            : saving ? 'Guardando…'
+            : <><PlusIcon size={12}/>Guardar en biblioteca</>}
         </button>
       </div>
     </div>
@@ -146,10 +132,7 @@ function Chip({ children, color }) {
       padding: '2px 7px', borderRadius: 999,
       background: color ? `${color}12` : 'var(--surface-2)',
       color: color || 'var(--text-muted)',
-      fontSize: 10, fontWeight: 600,
-      textTransform: 'capitalize',
-    }}>
-      {children}
-    </span>
+      fontSize: 10, fontWeight: 600, textTransform: 'capitalize',
+    }}>{children}</span>
   );
 }

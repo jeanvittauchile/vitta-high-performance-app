@@ -16,6 +16,8 @@ interface LibExercise {
   muscle: string;
   equipment: string;
   video_url: string | null;
+  gif_url: string | null;
+  source: string | null;
 }
 
 // ─── Exercise Detail Modal ───────────────────────────────────
@@ -59,7 +61,11 @@ function ExerciseDetailModal({ exercise, onClose }: { exercise: LibExercise; onC
             </InfoBox>
           </div>
 
-          {exercise.video_url ? (
+          {exercise.gif_url ? (
+            <div style={{ borderRadius: 10, overflow: 'hidden', background: '#f1f3f6', textAlign: 'center' }}>
+              <img src={exercise.gif_url} alt={exercise.name} style={{ maxWidth: '100%', maxHeight: 200, objectFit: 'contain' }}/>
+            </div>
+          ) : exercise.video_url ? (
             <a
               href={exercise.video_url}
               target="_blank"
@@ -452,7 +458,7 @@ export default function LibraryPage() {
     const supabase = createClient();
     supabase
       .from('exercises')
-      .select('id, slug, name, category, level, muscle, equipment, video_url')
+      .select('id, slug, name, category, level, muscle, equipment, video_url, gif_url, source')
       .order('category')
       .then(({ data, error }) => {
         if (!error && data) {
@@ -465,6 +471,8 @@ export default function LibraryPage() {
             muscle:    e.muscle || '—',
             equipment: e.equipment || '—',
             video_url: e.video_url || null,
+            gif_url:   e.gif_url  || null,
+            source:    e.source   || null,
           })));
         }
         setLoading(false);
@@ -609,12 +617,17 @@ export default function LibraryPage() {
                       background: 'white',
                     }}
                   >
-                    <button
-                      onClick={() => setDetailEx(ex)}
-                      style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 500, color: 'var(--text)' }}
-                    >
-                      {ex.name}
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                      <button
+                        onClick={() => setDetailEx(ex)}
+                        style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 500, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                      >
+                        {ex.name}
+                      </button>
+                      {ex.source === 'exercisedb' && (
+                        <span style={{ flexShrink: 0, fontSize: 9, fontWeight: 700, letterSpacing: '0.04em', padding: '1px 5px', borderRadius: 4, background: 'rgba(46,107,214,0.10)', color: 'var(--vitta-blue)', border: '1px solid rgba(46,107,214,0.20)' }}>ExDB</span>
+                      )}
+                    </div>
                     <LevelBadge level={ex.level} size="sm"/>
                     <span className="muted" style={{ fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {[ex.muscle !== '—' ? ex.muscle : '', ex.equipment !== '—' ? ex.equipment : ''].filter(Boolean).join(' · ') || '—'}
