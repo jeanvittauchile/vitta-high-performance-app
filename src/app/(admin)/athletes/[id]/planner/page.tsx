@@ -496,6 +496,113 @@ function EditBlockForm({ block, onSaved, onCancel }: {
   );
 }
 
+// ─── Plan Templates ──────────────────────────────────────────
+
+const PLAN_TEMPLATES: { id: string; name: string; description: string; plan: DayType[][] }[] = [
+  {
+    id: 'vitta',
+    name: 'Estándar Vitta',
+    description: 'Push · Pull · Core + ENV · AER con descarga en S4',
+    plan: [
+      ['EMP','TRC','ZM','MOV','ENV','AER','REST'],
+      ['EMP','TRC','ZM','MOV','ENV','AER','REST'],
+      ['EMP','TRC','ZM','MOV','ENV','AER','REST'],
+      ['DELOAD','REST','TRC','MOV','TEST','REST','REST'],
+    ],
+  },
+  {
+    id: 'olimpico',
+    name: 'Mesociclo Olímpico',
+    description: 'ARR · ENV · JRK con test y descarga en S4',
+    plan: [
+      ['ARR','ENV','JRK','MOV','ARR','PRV','REST'],
+      ['ENV','ARR','JRK','MOV','ENV','PRV','REST'],
+      ['ARR','ENV','JRK','MOV','ARR','AER','REST'],
+      ['DELOAD','REST','MOV','REST','TEST','REST','REST'],
+    ],
+  },
+  {
+    id: 'fuerza',
+    name: 'Fuerza Base',
+    description: 'EMP y TRC alternados con ZM y AER',
+    plan: [
+      ['EMP','TRC','ZM','REST','EMP','TRC','REST'],
+      ['ZM','EMP','TRC','MOV','EMP','TRC','REST'],
+      ['EMP','TRC','ZM','REST','EMP','AER','REST'],
+      ['TRC','REST','ZM','MOV','REST','REST','REST'],
+    ],
+  },
+  {
+    id: 'aerobico',
+    name: 'Aeróbico + Prevención',
+    description: 'AER diario con preventivos y movilidad',
+    plan: [
+      ['AER','PRV','MOV','AER','PRV','AER','REST'],
+      ['AER','PRV','ZM','AER','PRV','AER','REST'],
+      ['AER','PRV','MOV','AER','COR','AER','REST'],
+      ['AER','REST','MOV','AER','REST','REST','REST'],
+    ],
+  },
+];
+
+function TemplatePickerModal({ onClose, onApply }: {
+  onClose: () => void;
+  onApply: (plan: DayType[][]) => void;
+}) {
+  const [selected, setSelected] = useState<string>(PLAN_TEMPLATES[0].id);
+  const tpl = PLAN_TEMPLATES.find(t => t.id === selected)!;
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()}
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(14,25,54,0.55)', display: 'grid', placeItems: 'center' }}>
+      <div className="card" style={{ width: 520, padding: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 18 }}>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>Aplicar plantilla mensual</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 20 }}>×</button>
+        </div>
+        <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
+          {PLAN_TEMPLATES.map(t => (
+            <button key={t.id} onClick={() => setSelected(t.id)} style={{
+              padding: '10px 14px', borderRadius: 8, textAlign: 'left', cursor: 'pointer',
+              border: selected === t.id ? '2px solid var(--vitta-blue)' : '1px solid var(--border)',
+              background: selected === t.id ? 'rgba(46,107,214,0.08)' : 'var(--surface-2)',
+              fontFamily: 'inherit',
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{t.name}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>{t.description}</div>
+            </button>
+          ))}
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700, marginBottom: 8 }}>Vista previa · {tpl.name}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 }}>
+            {['L','M','X','J','V','S','D'].map(d => (
+              <div key={d} style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textAlign: 'center', padding: '2px 0' }}>{d}</div>
+            ))}
+            {tpl.plan.map((week, wi) =>
+              week.map((dt, di) => {
+                const t2 = DAY_TYPES[dt] || DAY_TYPES.REST;
+                return (
+                  <div key={`${wi}-${di}`} style={{
+                    padding: '5px 2px', borderRadius: 4, textAlign: 'center',
+                    background: t2.bg, color: t2.color, fontSize: 8, fontWeight: 700,
+                  }}>{dt}</div>
+                );
+              })
+            )}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} className="btn btn-ghost">Cancelar</button>
+          <button onClick={() => onApply(tpl.plan)} className="btn btn-primary">
+            <LayersIcon size={13}/>Aplicar plantilla
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main page ───────────────────────────────────────────────
 
 export default function PlannerPage() {
@@ -522,6 +629,8 @@ export default function PlannerPage() {
   const [addSetFor, setAddSetFor] = useState<string | null>(null);
   const [doneBlocks, setDoneBlocks] = useState<Set<string>>(new Set());
   const [collapsedBlocks, setCollapsedBlocks] = useState<Set<string>>(new Set());
+  const [duplicating, setDuplicating] = useState(false);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
 
   // ── Fetch athlete ──────────────────────────────────────────
   useEffect(() => {
@@ -716,6 +825,31 @@ export default function PlannerPage() {
     );
   }
 
+  // ── Duplicate previous month plan ─────────────────────────
+  async function handleDuplicatePrevMonth() {
+    setDuplicating(true);
+    const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+    const prevMonthNum = currentMonth === 1 ? 12 : currentMonth - 1;
+    const supabase = createClient();
+    const { data } = await supabase.from('month_plans').select('plan')
+      .eq('athlete_id', id).eq('year', prevYear).eq('month', prevMonthNum).maybeSingle();
+    if (!data?.plan) {
+      alert(`No hay plan guardado para ${MONTH_NAMES[prevMonthNum - 1]} ${prevYear}.`);
+      setDuplicating(false);
+      return;
+    }
+    const plan = data.plan as DayType[][];
+    await savePlan(plan);
+    setMonthPlan(plan);
+    setDuplicating(false);
+  }
+
+  async function handleApplyTemplate(plan: DayType[][]) {
+    await savePlan(plan);
+    setMonthPlan(plan);
+    setShowTemplateModal(false);
+  }
+
   // ── Navigate months ────────────────────────────────────────
   function prevMonth() {
     if (currentMonth === 1) { setCurrentYear(y => y - 1); setCurrentMonth(12); } else setCurrentMonth(m => m - 1);
@@ -757,6 +891,9 @@ export default function PlannerPage() {
           }}
         />
       )}
+      {showTemplateModal && (
+        <TemplatePickerModal onClose={() => setShowTemplateModal(false)} onApply={handleApplyTemplate} />
+      )}
       {editSession && (
         <EditSessionModal session={editSession} onClose={() => setEditSession(null)}
           onSaved={updated => {
@@ -783,8 +920,12 @@ export default function PlannerPage() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button className="btn btn-ghost"><CopyIcon size={13}/>Duplicar mes anterior</button>
-            <button className="btn btn-ghost"><LayersIcon size={13}/>Aplicar plantilla</button>
+            <button className="btn btn-ghost" onClick={handleDuplicatePrevMonth} disabled={duplicating}>
+              <CopyIcon size={13}/>{duplicating ? 'Copiando...' : 'Duplicar mes anterior'}
+            </button>
+            <button className="btn btn-ghost" onClick={() => setShowTemplateModal(true)}>
+              <LayersIcon size={13}/>Aplicar plantilla
+            </button>
             <button className="btn btn-primary"
               onClick={() => { if (!selectedDay) { alert('Selecciona un día en el calendario primero.'); return; } setShowNewSession(true); }}>
               <PlusIcon size={13}/>Añadir sesión

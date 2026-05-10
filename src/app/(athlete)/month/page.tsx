@@ -151,7 +151,9 @@ export default function MonthPage() {
   const displayPlan = plan ?? defaultPlan();
 
   // Computed stats
-  const totalTrainDays = plan ? displayPlan.reduce((s, w) => s + w.filter(d => d !== 'REST').length, 0) : 0;
+  const totalTrainDays = plan
+    ? displayPlan.reduce((s, w) => s + w.filter(d => d !== 'REST').length, 0)
+    : Object.keys(sessionStatus).length;
   const completedDays  = Object.values(sessionStatus).filter(s => s === 'done').length;
   const partialDays    = Object.values(sessionStatus).filter(s => s === 'partial').length;
   const adherencePct   = totalTrainDays > 0 ? Math.round((completedDays / totalTrainDays) * 100) : 0;
@@ -184,58 +186,47 @@ export default function MonthPage() {
           </div>
         </div>
 
-        {plan && (
-          <>
-            {/* Week progress bars */}
-            <div style={{ display: 'flex', gap: 4 }}>
-              {displayPlan.map((w, i) => (
-                <div key={i} style={{ flex: 1, height: 6, borderRadius: 3, background: 'var(--vitta-blue)', opacity: 0.3 + i * 0.2 }}/>
-              ))}
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 9, color: 'var(--d-text-faint)', letterSpacing: '0.04em' }}>
-              <span>S1</span><span>S2</span><span>S3</span><span>S4</span>
-            </div>
+        {/* Week progress bars */}
+        <div style={{ display: 'flex', gap: 4 }}>
+          {displayPlan.map((w, i) => (
+            <div key={i} style={{ flex: 1, height: 6, borderRadius: 3, background: 'var(--vitta-blue)', opacity: 0.3 + i * 0.2 }}/>
+          ))}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 9, color: 'var(--d-text-faint)', letterSpacing: '0.04em' }}>
+          <span>S1</span><span>S2</span><span>S3</span><span>S4</span>
+        </div>
 
-            {/* Monthly stats strip */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 12 }}>
-              <div style={{ padding: '8px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: 10, border: '1px solid var(--d-border)' }}>
-                <div className="display tnum" style={{ fontSize: 18, color: 'var(--vitta-cream)' }}>{totalTrainDays}</div>
-                <div style={{ fontSize: 9, color: 'var(--d-text-faint)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginTop: 2 }}>Sesiones</div>
-              </div>
-              <div style={{ padding: '8px 10px', background: completedDays > 0 ? 'rgba(43,182,115,0.10)' : 'rgba(255,255,255,0.04)', borderRadius: 10, border: `1px solid ${completedDays > 0 ? 'rgba(43,182,115,0.25)' : 'var(--d-border)'}` }}>
-                <div className="display tnum" style={{ fontSize: 18, color: completedDays > 0 ? 'var(--green)' : 'var(--vitta-cream)' }}>{completedDays}</div>
-                <div style={{ fontSize: 9, color: 'var(--d-text-faint)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginTop: 2 }}>Completadas</div>
-              </div>
-              <div style={{ padding: '8px 10px', background: adherencePct > 0 ? 'rgba(46,107,214,0.12)' : 'rgba(255,255,255,0.04)', borderRadius: 10, border: `1px solid ${adherencePct > 0 ? 'rgba(46,107,214,0.25)' : 'var(--d-border)'}` }}>
-                <div className="display tnum" style={{ fontSize: 18, color: adherencePct > 0 ? 'var(--vitta-blue-bright)' : 'var(--vitta-cream)' }}>{adherencePct}%</div>
-                <div style={{ fontSize: 9, color: 'var(--d-text-faint)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginTop: 2 }}>Adherencia</div>
-              </div>
-            </div>
+        {/* Monthly stats strip */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 12 }}>
+          <div style={{ padding: '8px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: 10, border: '1px solid var(--d-border)' }}>
+            <div className="display tnum" style={{ fontSize: 18, color: 'var(--vitta-cream)' }}>{totalTrainDays}</div>
+            <div style={{ fontSize: 9, color: 'var(--d-text-faint)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginTop: 2 }}>Sesiones</div>
+          </div>
+          <div style={{ padding: '8px 10px', background: completedDays > 0 ? 'rgba(43,182,115,0.10)' : 'rgba(255,255,255,0.04)', borderRadius: 10, border: `1px solid ${completedDays > 0 ? 'rgba(43,182,115,0.25)' : 'var(--d-border)'}` }}>
+            <div className="display tnum" style={{ fontSize: 18, color: completedDays > 0 ? 'var(--green)' : 'var(--vitta-cream)' }}>{completedDays}</div>
+            <div style={{ fontSize: 9, color: 'var(--d-text-faint)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginTop: 2 }}>Completadas</div>
+          </div>
+          <div style={{ padding: '8px 10px', background: adherencePct > 0 ? 'rgba(46,107,214,0.12)' : 'rgba(255,255,255,0.04)', borderRadius: 10, border: `1px solid ${adherencePct > 0 ? 'rgba(46,107,214,0.25)' : 'var(--d-border)'}` }}>
+            <div className="display tnum" style={{ fontSize: 18, color: adherencePct > 0 ? 'var(--vitta-blue-bright)' : 'var(--vitta-cream)' }}>{adherencePct}%</div>
+            <div style={{ fontSize: 9, color: 'var(--d-text-faint)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginTop: 2 }}>Adherencia</div>
+          </div>
+        </div>
 
-            {partialDays > 0 && (
-              <div style={{ marginTop: 8, padding: '6px 10px', borderRadius: 8, background: 'rgba(232,163,58,0.10)', border: '1px solid rgba(232,163,58,0.25)', fontSize: 11, color: 'var(--amber)', fontWeight: 600 }}>
-                {partialDays} sesión{partialDays > 1 ? 'es' : ''} en progreso
-              </div>
-            )}
-          </>
+        {partialDays > 0 && (
+          <div style={{ marginTop: 8, padding: '6px 10px', borderRadius: 8, background: 'rgba(232,163,58,0.10)', border: '1px solid rgba(232,163,58,0.25)', fontSize: 11, color: 'var(--amber)', fontWeight: 600 }}>
+            {partialDays} sesión{partialDays > 1 ? 'es' : ''} en progreso
+          </div>
         )}
       </div>
 
       {loading ? (
         <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--d-text-muted)', fontSize: 13 }}>Cargando...</div>
-      ) : !plan ? (
-        <div style={{ padding: '40px 16px', textAlign: 'center', background: 'var(--d-surface)', borderRadius: 14, border: '1px solid var(--d-border)' }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--d-text)', marginBottom: 6 }}>Sin plan para este mes</div>
-          <div style={{ fontSize: 12, color: 'var(--d-text-muted)' }}>Tu coach aún no ha publicado el plan mensual.</div>
-        </div>
       ) : (
         <div style={{ display: 'grid', gap: 8 }}>
           {displayPlan.map((week, wi) => {
             const expanded = expandedWeek === wi;
-            const weekTrainCount = week.filter(d => d !== 'REST').length;
-
-            // Completion indicator for the week header
             const weekDates = Array.from({ length: 7 }, (_, di) => cellDate(year, month, wi, di).toISOString().slice(0, 10));
+            const weekTrainCount = week.filter((d, di) => d !== 'REST' || !!sessionStatus[weekDates[di]]).length;
             const weekDone    = weekDates.filter(d => sessionStatus[d] === 'done').length;
             const weekPartial = weekDates.filter(d => sessionStatus[d] === 'partial').length;
 
@@ -272,7 +263,7 @@ export default function MonthPage() {
                       const dateISO = date.toISOString().slice(0, 10);
                       const isToday = dateISO === todayISO;
                       const dayNum = date.getDate();
-                      const hasSession = d !== 'REST';
+                      const hasSession = d !== 'REST' || !!sessionStatus[dateISO];
                       const isSelected = selectedDayISO === dateISO;
                       const sessionData = daySessions[dateISO];
                       const completion = sessionStatus[dateISO];
@@ -298,8 +289,8 @@ export default function MonthPage() {
                             <div className="mono" style={{ fontSize: 11, color: 'var(--d-text-faint)', fontWeight: 700 }}>{DAY_LABELS[di]}</div>
                             <div className="display tnum" style={{ fontSize: 16, color: isToday ? 'var(--vitta-blue-bright)' : 'var(--d-text)' }}>{dayNum}</div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                              {d !== 'REST' && <div style={{ width: 8, height: 8, borderRadius: 4, background: t.color, flexShrink: 0 }}/>}
-                              <span style={{ fontSize: 13, color: d === 'REST' ? 'var(--d-text-faint)' : 'var(--d-text)', fontWeight: d === 'REST' ? 400 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.label}</span>
+                              {hasSession && <div style={{ width: 8, height: 8, borderRadius: 4, background: t.color, flexShrink: 0 }}/>}
+                              <span style={{ fontSize: 13, color: hasSession ? 'var(--d-text)' : 'var(--d-text-faint)', fontWeight: hasSession ? 500 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.label}</span>
                               {isToday && <span style={{ padding: '2px 6px', borderRadius: 4, background: 'var(--vitta-blue)', color: '#fff', fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', flexShrink: 0 }}>HOY</span>}
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
