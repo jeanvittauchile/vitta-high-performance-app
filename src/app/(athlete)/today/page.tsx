@@ -551,14 +551,6 @@ export default function TodayPage() {
         <div style={{ fontSize: 13, color: 'var(--d-text-muted)', lineHeight: 1.5 }}>
           No tienes sesión planificada para hoy.<br/>Descansa o contacta a tu coach.
         </div>
-        <a href="/exercises/explore" style={{
-          display: 'inline-flex', alignItems: 'center', gap: 8,
-          marginTop: 24, padding: '11px 20px', borderRadius: 12,
-          background: 'rgba(46,107,214,0.12)', border: '1px solid rgba(46,107,214,0.25)',
-          color: 'var(--vitta-blue-bright)', fontSize: 13, fontWeight: 700, textDecoration: 'none',
-        }}>
-          Explorar ejercicios
-        </a>
       </div>
     );
   }
@@ -702,20 +694,6 @@ export default function TodayPage() {
           </div>
         </div>
       </div>
-
-      {/* Explorar ejercicios */}
-      <a href="/exercises/explore" style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        marginTop: 12, padding: '14px 16px', borderRadius: 14,
-        background: 'rgba(46,107,214,0.10)', border: '1px solid rgba(46,107,214,0.22)',
-        textDecoration: 'none',
-      }}>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--vitta-blue-bright)' }}>Explorar ejercicios</div>
-          <div style={{ fontSize: 11, color: 'var(--d-text-muted)', marginTop: 2 }}>Miles de ejercicios con GIFs y guías paso a paso</div>
-        </div>
-        <div style={{ fontSize: 20, flexShrink: 0 }}>→</div>
-      </a>
 
       {activeExercise && (
         <ExerciseSheet
