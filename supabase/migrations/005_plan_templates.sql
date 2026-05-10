@@ -16,7 +16,8 @@ alter table plan_templates enable row level security;
 
 create policy "admin_all_plan_templates"
   on plan_templates for all
-  using ((auth.jwt() -> 'user_metadata' ->> 'role') = 'admin');
+  using  ((auth.jwt() -> 'user_metadata' ->> 'role') = 'admin')
+  with check ((auth.jwt() -> 'user_metadata' ->> 'role') = 'admin');
 
 create policy "auth_read_plan_templates"
   on plan_templates for select
