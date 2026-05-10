@@ -58,13 +58,13 @@ export default function ExplorePage() {
     setError('');
     try {
       let data;
-      // Filtered endpoints: fetch up to 200 results, paginate client-side
+      // Filtered endpoints return all matches; we paginate client-side
       if (filterType === 'bodyPart' && filterValue) {
-        data = await fetchByBodyPart(filterValue, 200, 0);
+        data = await fetchByBodyPart(filterValue);
       } else if (filterType === 'target' && filterValue) {
-        data = await fetchByTarget(filterValue, 200, 0);
+        data = await fetchByTarget(filterValue);
       } else if (filterType === 'equipment' && filterValue) {
-        data = await fetchByEquipment(filterValue, 200, 0);
+        data = await fetchByEquipment(filterValue);
       } else {
         // "All": server-side pagination with PAGE_SIZE
         data = await fetchExercises(PAGE_SIZE, page * PAGE_SIZE);

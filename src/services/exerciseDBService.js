@@ -84,16 +84,16 @@ export async function fetchExercises(limit = 20, offset = 0) {
   return apiFetch(`/exercises?limit=${limit}&offset=${offset}`);
 }
 
-export async function fetchByBodyPart(bodyPart, limit = 20, offset = 0) {
-  return apiFetch(`/exercises/bodyPart/${encodeURIComponent(bodyPart)}?limit=${limit}&offset=${offset}`);
+export async function fetchByBodyPart(bodyPart) {
+  return apiFetch(`/exercises/bodyPart/${encodeURIComponent(bodyPart)}`);
 }
 
-export async function fetchByTarget(muscle, limit = 20, offset = 0) {
-  return apiFetch(`/exercises/target/${encodeURIComponent(muscle)}?limit=${limit}&offset=${offset}`);
+export async function fetchByTarget(muscle) {
+  return apiFetch(`/exercises/target/${encodeURIComponent(muscle)}`);
 }
 
-export async function fetchByEquipment(equipment, limit = 20, offset = 0) {
-  return apiFetch(`/exercises/equipment/${encodeURIComponent(equipment)}?limit=${limit}&offset=${offset}`);
+export async function fetchByEquipment(equipment) {
+  return apiFetch(`/exercises/equipment/${encodeURIComponent(equipment)}`);
 }
 
 export async function fetchBodyParts() {
