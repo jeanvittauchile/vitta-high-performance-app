@@ -28,6 +28,15 @@ export default function ExplorePage() {
   const targets       = useMemo(() => [...new Set(all.flatMap(getTargets))].sort(),       [all]);
   const equipmentList = useMemo(() => [...new Set(all.flatMap(getEquipments))].sort(),    [all]);
 
+  // Admin-only: redirect athletes away
+  useEffect(() => {
+    createClient().auth.getUser().then(({ data: { user } }) => {
+      if (!user || user.user_metadata?.role !== 'admin') {
+        router.replace('/today');
+      }
+    });
+  }, [router]);
+
   // Load all exercises + saved slugs once
   useEffect(() => {
     setLoading(true);
