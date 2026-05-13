@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
 import { saveToSupabase, mapToVittaRow } from '@/services/exerciseDBService';
+import { translateStepsToSpanish } from '@/lib/translate';
 import { ChevronDown, CheckIcon, PlusIcon } from '@/components/icons';
 
 export default function ExerciseDBCard({ exercise, alreadySaved = false, onSaved }) {
@@ -14,6 +15,8 @@ export default function ExerciseDBCard({ exercise, alreadySaved = false, onSaved
   const [playing,   setPlaying]   = useState(false);
   const [frame,     setFrame]     = useState(0);
   const intervalRef = useRef(null);
+  const [translatedSteps, setTranslatedSteps] = useState(null);
+  const [translating,     setTranslating]     = useState(false);
 
   const frames = exercise.gifFrames?.length > 1 ? exercise.gifFrames : null;
 
@@ -115,7 +118,16 @@ export default function ExerciseDBCard({ exercise, alreadySaved = false, onSaved
         {hasInstructions && (
           <div>
             <button
-              onClick={() => setExpanded(e => !e)}
+              onClick={async () => {
+                const opening = !expanded;
+                setExpanded(opening);
+                if (opening && !translatedSteps) {
+                  setTranslating(true);
+                  const result = await translateStepsToSpanish(exercise.instructions);
+                  setTranslatedSteps(result);
+                  setTranslating(false);
+                }
+              }}
               style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text-muted)', fontSize: 11, fontWeight: 600, fontFamily: 'inherit' }}
             >
               Instrucciones
@@ -123,9 +135,12 @@ export default function ExerciseDBCard({ exercise, alreadySaved = false, onSaved
             </button>
             {expanded && (
               <ol style={{ margin: '6px 0 0 16px', padding: 0, display: 'grid', gap: 4 }}>
-                {exercise.instructions.map((step, i) => (
-                  <li key={i} style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>{step}</li>
-                ))}
+                {translating
+                  ? <li style={{ fontSize: 11, color: 'var(--text-faint)', listStyle: 'none', marginLeft: -16 }}>Traduciendo…</li>
+                  : (translatedSteps ?? exercise.instructions).map((step, i) => (
+                      <li key={i} style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>{step}</li>
+                    ))
+                }
               </ol>
             )}
           </div>
