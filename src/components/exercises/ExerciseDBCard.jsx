@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
 import { saveToSupabase, mapToVittaRow } from '@/services/exerciseDBService';
 import { ChevronDown, CheckIcon, PlusIcon } from '@/components/icons';
@@ -11,6 +11,23 @@ export default function ExerciseDBCard({ exercise, alreadySaved = false, onSaved
   const [error,     setError]     = useState('');
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imgError,  setImgError]  = useState(false);
+  const [playing,   setPlaying]   = useState(false);
+  const [frame,     setFrame]     = useState(0);
+  const intervalRef = useRef(null);
+
+  const frames = exercise.gifFrames?.length > 1 ? exercise.gifFrames : null;
+
+  useEffect(() => {
+    if (playing && frames) {
+      intervalRef.current = setInterval(() => {
+        setFrame(f => (f + 1) % frames.length);
+      }, 600);
+    } else {
+      clearInterval(intervalRef.current);
+      if (!playing) setFrame(0);
+    }
+    return () => clearInterval(intervalRef.current);
+  }, [playing, frames]);
 
   async function handleSave() {
     setSaving(true);
@@ -40,10 +57,10 @@ export default function ExerciseDBCard({ exercise, alreadySaved = false, onSaved
       display: 'flex', flexDirection: 'column',
       boxShadow: 'var(--shadow-sm)',
     }}>
-      {/* GIF */}
+      {/* Image */}
       <div style={{ position: 'relative', background: '#f1f3f6', aspectRatio: '4/3', overflow: 'hidden' }}>
         {saved && (
-          <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 1, background: 'rgba(43,182,115,0.90)', borderRadius: 6, padding: '2px 7px', fontSize: 10, fontWeight: 700, color: '#fff' }}>
+          <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 2, background: 'rgba(43,182,115,0.90)', borderRadius: 6, padding: '2px 7px', fontSize: 10, fontWeight: 700, color: '#fff' }}>
             En biblioteca
           </div>
         )}
@@ -55,13 +72,28 @@ export default function ExerciseDBCard({ exercise, alreadySaved = false, onSaved
               </div>
             )}
             <img
-              src={exercise.gifUrl}
+              src={frames ? frames[frame] : exercise.gifUrl}
               alt={exercise.name}
               loading="lazy"
               onLoad={() => setImgLoaded(true)}
               onError={() => setImgError(true)}
               style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: imgLoaded ? 1 : 0, transition: 'opacity 0.3s' }}
             />
+            {frames && imgLoaded && (
+              <button
+                onClick={() => setPlaying(p => !p)}
+                style={{
+                  position: 'absolute', bottom: 6, right: 6, zIndex: 2,
+                  width: 28, height: 28, borderRadius: '50%',
+                  background: 'rgba(0,0,0,0.55)', border: 'none',
+                  color: '#fff', cursor: 'pointer',
+                  display: 'grid', placeItems: 'center', fontSize: 11,
+                }}
+                title={playing ? 'Pausar' : 'Reproducir'}
+              >
+                {playing ? '⏸' : '▶'}
+              </button>
+            )}
           </>
         ) : (
           <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: 'var(--text-muted)', fontSize: 11 }}>Sin imagen</div>

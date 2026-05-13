@@ -4,7 +4,7 @@
 const DATA_URL  = 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/dist/exercises.json';
 const IMAGE_BASE = 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/';
 
-const CACHE_KEY = 'vitta_exdb_all';
+const CACHE_KEY = 'vitta_exdb_all_v2';
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 h (static dataset, no need to refresh often)
 
 // ─── yuhonas level → Vitta LevelId ───────────────────────────
@@ -42,10 +42,12 @@ function setCache(data) {
 // The card and page always receive this format regardless of source.
 
 function normalize(ex) {
+  const frames = (ex.images ?? []).map(img => IMAGE_BASE + img);
   return {
     exerciseId:    ex.id,
     name:          ex.name,
-    gifUrl:        ex.images?.[0] ? IMAGE_BASE + ex.images[0] : null,
+    gifUrl:        frames[0] ?? null,
+    gifFrames:     frames,
     instructions:  ex.instructions ?? [],
     bodyParts:     ex.primaryMuscles ?? [],
     targetMuscles: ex.primaryMuscles ?? [],
