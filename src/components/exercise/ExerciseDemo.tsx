@@ -8,6 +8,57 @@ interface Props {
   dark?: boolean;
 }
 
+function VideoPlayer({ src }: { src: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [showBtn, setShowBtn]     = useState(false);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function toggle() {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) { v.play(); setIsPlaying(true); }
+    else          { v.pause(); setIsPlaying(false); }
+    setShowBtn(true);
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    hideTimer.current = setTimeout(() => setShowBtn(false), 1400);
+  }
+
+  return (
+    <div
+      onClick={toggle}
+      style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', cursor: 'pointer', background: '#000' }}
+    >
+      <video
+        ref={videoRef}
+        src={src}
+        autoPlay
+        muted
+        playsInline
+        loop
+        style={{ width: '100%', display: 'block' }}
+      />
+      <div style={{
+        position: 'absolute', inset: 0,
+        display: 'grid', placeItems: 'center',
+        opacity: showBtn || !isPlaying ? 1 : 0,
+        transition: 'opacity 0.2s',
+        background: showBtn || !isPlaying ? 'rgba(0,0,0,0.28)' : 'transparent',
+      }}>
+        <div style={{
+          width: 56, height: 56, borderRadius: 28,
+          background: 'rgba(244,239,224,0.90)',
+          display: 'grid', placeItems: 'center',
+          color: 'var(--vitta-navy-ink)',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+        }}>
+          {isPlaying ? <PauseIcon size={22}/> : <PlayIcon size={22}/>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ExerciseDemo({ videoUrl, gifUrl, dark = true }: Props) {
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -31,19 +82,7 @@ export default function ExerciseDemo({ videoUrl, gifUrl, dark = true }: Props) {
   const mm = String(Math.floor(elapsed / 60)).padStart(1, '0');
   const ss = String(elapsed % 60).padStart(2, '0');
 
-  if (videoUrl) {
-    return (
-      <video
-        src={videoUrl}
-        controls
-        autoPlay
-        muted
-        playsInline
-        loop
-        style={{ width: '100%', borderRadius: 12, display: 'block' }}
-      />
-    );
-  }
+  if (videoUrl) return <VideoPlayer src={videoUrl}/>;
 
   if (gifUrl) {
     return (
