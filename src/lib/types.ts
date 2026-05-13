@@ -65,6 +65,10 @@ export interface SessionExercise {
   level: LevelId;
   note?: string;
   category?: CategoryId;
+  muscle?: string;
+  equipment?: string;
+  videoUrl?: string;
+  gifUrl?: string;
   sets: SetSpec[];
 }
 

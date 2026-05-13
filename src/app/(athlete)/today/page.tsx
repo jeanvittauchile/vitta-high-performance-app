@@ -32,6 +32,8 @@ interface ExRow {
   exercise_slug: string | null;
   muscle: string | null;
   equipment: string | null;
+  video_url: string | null;
+  gif_url: string | null;
   sets: SetRow[];
 }
 
@@ -63,6 +65,10 @@ function toSessionExercise(ex: ExRow, catId: CategoryId): SessionExercise {
     level: (ex.level as LevelId) || 'basico',
     note: ex.note || undefined,
     category: catId,
+    muscle:    ex.muscle    ?? undefined,
+    equipment: ex.equipment ?? undefined,
+    videoUrl:  ex.video_url ?? undefined,
+    gifUrl:    ex.gif_url   ?? undefined,
     sets: ex.sets.map(s => ({
       r: s.reps || '—',
       l: s.load || '—',
@@ -396,7 +402,7 @@ export default function TodayPage() {
           id, name, category, color, sort_order,
           session_exercises (
             id, name, level, note, sort_order,
-            exercises ( slug, muscle, equipment ),
+            exercises ( slug, muscle, equipment, video_url, gif_url ),
             sets ( id, reps, load, rpe_target, rest, done, sort_order, actual_reps, actual_load, actual_rpe )
           )
         )
@@ -418,9 +424,11 @@ export default function TodayPage() {
               .sort((a: any, b: any) => a.sort_order - b.sort_order)
               .map((ex: any) => ({
                 ...ex,
-                exercise_slug: ex.exercises?.slug ?? null,
-                muscle:        ex.exercises?.muscle ?? null,
+                exercise_slug: ex.exercises?.slug     ?? null,
+                muscle:        ex.exercises?.muscle    ?? null,
                 equipment:     ex.exercises?.equipment ?? null,
+                video_url:     ex.exercises?.video_url ?? null,
+                gif_url:       ex.exercises?.gif_url   ?? null,
                 sets: (ex.sets || []).sort((a: any, b: any) => a.sort_order - b.sort_order),
               })),
           })),

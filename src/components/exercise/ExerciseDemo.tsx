@@ -4,10 +4,11 @@ import { PlayIcon, PauseIcon, VideoIcon } from '@/components/icons';
 
 interface Props {
   videoUrl?: string;
+  gifUrl?: string;
   dark?: boolean;
 }
 
-export default function ExerciseDemo({ videoUrl, dark = true }: Props) {
+export default function ExerciseDemo({ videoUrl, gifUrl, dark = true }: Props) {
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -32,7 +33,25 @@ export default function ExerciseDemo({ videoUrl, dark = true }: Props) {
 
   if (videoUrl) {
     return (
-      <video src={videoUrl} controls style={{ width: '100%', borderRadius: 12, display: 'block' }}/>
+      <video
+        src={videoUrl}
+        controls
+        autoPlay
+        muted
+        playsInline
+        loop
+        style={{ width: '100%', borderRadius: 12, display: 'block' }}
+      />
+    );
+  }
+
+  if (gifUrl) {
+    return (
+      <img
+        src={gifUrl}
+        alt="Demostración"
+        style={{ width: '100%', borderRadius: 12, display: 'block', objectFit: 'cover', aspectRatio: '4/3' }}
+      />
     );
   }
 

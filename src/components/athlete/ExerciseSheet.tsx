@@ -17,13 +17,13 @@ const RPE_CUES = [
 export default function ExerciseSheet({ exercise, onClose }: { exercise: SessionExercise; onClose: () => void }) {
   const [rpe, setRpe] = useState(7);
   const fullEx = EXERCISES.find(e => e.id === exercise.exId);
-  const videoUrl = fullEx?.videoUrl;
+  const videoUrl = exercise.videoUrl || exercise.gifUrl || fullEx?.videoUrl;
   const merged = {
-    name: exercise.name || fullEx?.name || '',
-    level: exercise.level || fullEx?.level,
-    category: exercise.category || fullEx?.category,
-    muscle: fullEx?.muscle || '',
-    equipment: fullEx?.equipment || '',
+    name:      exercise.name      || fullEx?.name      || '',
+    level:     exercise.level     || fullEx?.level,
+    category:  exercise.category  || fullEx?.category,
+    muscle:    exercise.muscle    || fullEx?.muscle    || '',
+    equipment: exercise.equipment || fullEx?.equipment || '',
   };
 
   return (
@@ -45,7 +45,7 @@ export default function ExerciseSheet({ exercise, onClose }: { exercise: Session
       </div>
 
       <div className="thin-scroll-dark" style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
-        <ExerciseDemo videoUrl={videoUrl} dark/>
+        <ExerciseDemo videoUrl={exercise.videoUrl || fullEx?.videoUrl} gifUrl={exercise.gifUrl} dark/>
 
         {/* Meta */}
         <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
