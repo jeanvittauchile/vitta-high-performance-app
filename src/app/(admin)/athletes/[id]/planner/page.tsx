@@ -24,6 +24,7 @@ interface DbExercise {
   level: LevelId | null;
   note: string | null;
   sort_order: number;
+  video_url: string | null;
   sets: DbSet[];
 }
 
@@ -910,6 +911,8 @@ export default function PlannerPage() {
   const [addExerciseFor, setAddExerciseFor] = useState<string | null>(null);
   const [expandedEx, setExpandedEx] = useState<Set<string>>(new Set());
   const [addSetFor, setAddSetFor] = useState<string | null>(null);
+  const [editVideoFor, setEditVideoFor] = useState<string | null>(null);
+  const [editVideoVal, setEditVideoVal] = useState('');
   const [doneBlocks, setDoneBlocks] = useState<Set<string>>(new Set());
   const [collapsedBlocks, setCollapsedBlocks] = useState<Set<string>>(new Set());
   const [duplicating, setDuplicating] = useState(false);
@@ -963,7 +966,7 @@ export default function PlannerPage() {
         session_blocks (
           id, name, category, color, sort_order,
           session_exercises (
-            id, name, level, note, sort_order,
+            id, name, level, note, sort_order, video_url,
             sets ( id, reps, load, rpe_target, rest, sort_order )
           )
         )
@@ -1081,6 +1084,24 @@ export default function PlannerPage() {
         b.id === blockId ? { ...b, session_exercises: b.session_exercises.filter(e => e.id !== exerciseId) } : b
       ),
     })));
+  }
+
+  // ── Save video URL for existing exercise ───────────────────
+  async function saveVideoUrl(exerciseId: string, blockId: string, url: string) {
+    const supabase = createClient();
+    await supabase.from('session_exercises').update({ video_url: url.trim() || null }).eq('id', exerciseId);
+    setDaySessions(prev => prev.map(s => ({
+      ...s,
+      session_blocks: s.session_blocks.map(b =>
+        b.id === blockId ? {
+          ...b,
+          session_exercises: b.session_exercises.map(e =>
+            e.id === exerciseId ? { ...e, video_url: url.trim() || null } : e
+          ),
+        } : b
+      ),
+    })));
+    setEditVideoFor(null);
   }
 
   // ── Delete set ─────────────────────────────────────────────
@@ -1508,12 +1529,34 @@ export default function PlannerPage() {
                                           </div>
                                           {item.note && <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>{item.note}</div>}
                                         </div>
+                                        <button onClick={e => { e.stopPropagation(); setEditVideoFor(editVideoFor === item.id ? null : item.id); setEditVideoVal(item.video_url || ''); }}
+                                          title={item.video_url ? 'Editar video' : 'Añadir video'}
+                                          style={{ background: 'transparent', border: 'none', color: item.video_url ? 'var(--vitta-blue)' : 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', opacity: 0.8 }}>
+                                          <PencilIcon size={13}/>
+                                        </button>
                                         <button onClick={e => { e.stopPropagation(); deleteExercise(item.id, block.id); }}
                                           style={{ background: 'transparent', border: 'none', color: '#D7474B', cursor: 'pointer', padding: '2px 4px', opacity: 0.7 }}>
                                           <TrashIcon size={13}/>
                                         </button>
                                         <ChevronDown size={14} style={{ color: 'var(--text-muted)', transition: 'transform 0.15s', transform: isExpanded ? 'rotate(180deg)' : 'none', flexShrink: 0 }}/>
                                       </div>
+
+                                      {editVideoFor === item.id && (
+                                        <div onClick={e => e.stopPropagation()} style={{ borderTop: '1px solid var(--border)', padding: '8px 10px', display: 'flex', gap: 6, alignItems: 'center', background: 'rgba(46,107,214,0.04)' }}>
+                                          <input
+                                            type="url"
+                                            value={editVideoVal}
+                                            onChange={e => setEditVideoVal(e.target.value)}
+                                            placeholder="URL de video o GIF"
+                                            autoFocus
+                                            style={{ flex: 1, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 11, fontFamily: 'inherit', color: 'var(--text)' }}
+                                          />
+                                          <button onClick={() => saveVideoUrl(item.id, block.id, editVideoVal)} className="btn btn-primary btn-sm" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
+                                            <CheckIcon size={11}/>Guardar
+                                          </button>
+                                          <button onClick={() => setEditVideoFor(null)} className="btn btn-ghost btn-sm" style={{ fontSize: 13 }}>×</button>
+                                        </div>
+                                      )}
 
                                       {isExpanded && (
                                         <div style={{ borderTop: '1px solid var(--border)' }}>
