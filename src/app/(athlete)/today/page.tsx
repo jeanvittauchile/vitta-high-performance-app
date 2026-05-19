@@ -149,7 +149,14 @@ function ExerciseRow({ ex, block, onToggleSet, onOpen }: {
           </div>
           {ex.note && <div style={{ fontSize: 11, color: 'var(--d-text-muted)', marginTop: 4 }}>{ex.note}</div>}
         </div>
-        <button onClick={onOpen} style={{ padding: '6px 10px', borderRadius: 8, background: 'var(--vitta-blue)', color: '#fff', border: 'none', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+        <button
+          onClick={() => {
+            const link = ex.video_url || ex.gif_url;
+            if (link) window.open(link, '_blank', 'noopener,noreferrer');
+            else onOpen();
+          }}
+          style={{ padding: '6px 10px', borderRadius: 8, background: 'var(--vitta-blue)', color: '#fff', border: 'none', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+        >
           <PlayIcon size={10}/> Ver
         </button>
       </div>
