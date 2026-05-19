@@ -797,6 +797,93 @@ function TemplatesModal({ onClose, onApply }: {
   );
 }
 
+// ─── Copy Session Modal ──────────────────────────────────────
+
+function CopySessionModal({ session, athleteId, onClose, onCopied }: {
+  session: DbSession;
+  athleteId: string;
+  onClose: () => void;
+  onCopied: (targetDate: string) => void;
+}) {
+  const [targetDate, setTargetDate] = useState(session.date);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleCopy() {
+    if (!targetDate) { setError('Selecciona una fecha.'); return; }
+    setSaving(true);
+    setError('');
+    const supabase = createClient();
+
+    const { data: newSession, error: e1 } = await supabase
+      .from('sessions')
+      .insert({ athlete_id: athleteId, date: targetDate, title: session.title, duration: session.duration, rpe_target: session.rpe_target })
+      .select('id')
+      .single();
+    if (e1 || !newSession) { setError(e1?.message || 'Error al copiar sesión.'); setSaving(false); return; }
+
+    for (const block of session.session_blocks) {
+      const { data: newBlock, error: e2 } = await supabase
+        .from('session_blocks')
+        .insert({ session_id: newSession.id, name: block.name, category: block.category, color: block.color, sort_order: block.sort_order })
+        .select('id')
+        .single();
+      if (e2 || !newBlock) continue;
+
+      for (const ex of block.session_exercises) {
+        const { data: newEx, error: e3 } = await supabase
+          .from('session_exercises')
+          .insert({ block_id: newBlock.id, name: ex.name, level: ex.level, note: ex.note, sort_order: ex.sort_order })
+          .select('id')
+          .single();
+        if (e3 || !newEx) continue;
+
+        if (ex.sets.length > 0) {
+          await supabase.from('sets').insert(
+            ex.sets.map(s => ({ session_ex_id: newEx.id, reps: s.reps, load: s.load, rpe_target: s.rpe_target, rest: s.rest, sort_order: s.sort_order, done: false }))
+          );
+        }
+      }
+    }
+
+    setSaving(false);
+    onCopied(targetDate);
+    onClose();
+  }
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(14,25,54,0.55)', display: 'grid', placeItems: 'center' }}>
+      <div className="card" style={{ width: 380, padding: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 18 }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>Copiar sesión</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>{session.title}</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 20 }}>×</button>
+        </div>
+        <div style={{ display: 'grid', gap: 14 }}>
+          <div>
+            <label style={lblStyle}>Fecha destino</label>
+            <input
+              type="date"
+              value={targetDate}
+              onChange={e => setTargetDate(e.target.value)}
+              style={inputStyle}
+            />
+          </div>
+          {error && <div style={{ fontSize: 12, color: 'var(--red)', padding: '7px 10px', background: 'rgba(215,71,75,0.08)', borderRadius: 6 }}>{error}</div>}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button onClick={onClose} className="btn btn-ghost">Cancelar</button>
+            <button onClick={handleCopy} disabled={saving || !targetDate} className="btn btn-primary">
+              <CopyIcon size={13}/>{saving ? 'Copiando...' : 'Copiar sesión'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main page ───────────────────────────────────────────────
 
 export default function PlannerPage() {
@@ -825,6 +912,7 @@ export default function PlannerPage() {
   const [collapsedBlocks, setCollapsedBlocks] = useState<Set<string>>(new Set());
   const [duplicating, setDuplicating] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [copyingSession, setCopyingSession] = useState<DbSession | null>(null);
 
   // ── Fetch athlete ──────────────────────────────────────────
   useEffect(() => {
@@ -1096,6 +1184,20 @@ export default function PlannerPage() {
       {showTemplateModal && (
         <TemplatesModal onClose={() => setShowTemplateModal(false)} onApply={handleApplyTemplate} />
       )}
+      {copyingSession && (
+        <CopySessionModal
+          session={copyingSession}
+          athleteId={id}
+          onClose={() => setCopyingSession(null)}
+          onCopied={targetDate => {
+            setMonthSessionMap(prev => {
+              const next = new Map(prev);
+              if (!next.has(targetDate)) next.set(targetDate, copyingSession.title);
+              return next;
+            });
+          }}
+        />
+      )}
       {editSession && (
         <EditSessionModal session={editSession} onClose={() => setEditSession(null)}
           onSaved={updated => {
@@ -1266,6 +1368,12 @@ export default function PlannerPage() {
                       ))}
                     </div>
                     <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                      <button
+                        onClick={() => setCopyingSession(session)}
+                        title="Copiar sesión a otro día"
+                        style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-muted)', cursor: 'pointer', padding: '8px 10px', display: 'grid', placeItems: 'center' }}>
+                        <CopyIcon size={14}/>
+                      </button>
                       <button
                         onClick={() => setEditSession(session)}
                         title="Editar sesión"
