@@ -254,6 +254,7 @@ function AddExerciseForm({ blockId, category, onSaved, onCancel }: {
   const [name, setName] = useState('');
   const [level, setLevel] = useState<LevelId>('basico');
   const [note, setNote] = useState('');
+  const [videoUrl, setVideoUrl] = useState('');
   const [draftSets, setDraftSets] = useState<SetDraft[]>([
     { id: 1, reps: '5', load: '', rpe: '7', rest: '2:00' },
     { id: 2, reps: '5', load: '', rpe: '7', rest: '2:00' },
@@ -302,7 +303,7 @@ function AddExerciseForm({ blockId, category, onSaved, onCancel }: {
     const nextSort = ((existing?.[0]?.sort_order ?? -1) as number) + 1;
     const { data: exData, error: exErr } = await supabase
       .from('session_exercises')
-      .insert({ block_id: blockId, name: name.trim(), level, note: note.trim() || null, sort_order: nextSort })
+      .insert({ block_id: blockId, name: name.trim(), level, note: note.trim() || null, sort_order: nextSort, video_url: videoUrl.trim() || null })
       .select('id').single();
     if (exErr) { setSaveError(exErr.message); setSaving(false); return; }
     if (exData && draftSets.length > 0) {
@@ -389,6 +390,7 @@ function AddExerciseForm({ blockId, category, onSaved, onCancel }: {
       </div>
 
       <input placeholder="Nota / descripción (opcional)" value={note} onChange={e => setNote(e.target.value)} style={{ ...inp, width: '100%', boxSizing: 'border-box' }}/>
+      <input placeholder="URL de video o GIF (opcional)" value={videoUrl} onChange={e => setVideoUrl(e.target.value)} style={{ ...inp, width: '100%', boxSizing: 'border-box' }}/>
       {saveError && <div style={{ fontSize: 11, color: 'var(--red)', padding: '5px 8px', background: 'rgba(215,71,75,0.08)', borderRadius: 5 }}>{saveError}</div>}
       <div style={{ display: 'flex', gap: 6 }}>
         <button onClick={save} disabled={saving || !name.trim()} className="btn btn-primary btn-sm">{saving ? '...' : 'Añadir ejercicio'}</button>

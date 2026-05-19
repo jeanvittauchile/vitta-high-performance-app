@@ -457,7 +457,7 @@ export default function TodayPage() {
         session_blocks (
           id, name, category, color, sort_order,
           session_exercises (
-            id, name, level, note, sort_order,
+            id, name, level, note, sort_order, video_url, gif_url,
             exercises ( slug, muscle, equipment, video_url, gif_url ),
             sets ( id, reps, load, rpe_target, rest, done, sort_order, actual_reps, actual_load, actual_rpe )
           )
@@ -483,8 +483,8 @@ export default function TodayPage() {
                 exercise_slug: ex.exercises?.slug     ?? null,
                 muscle:        ex.exercises?.muscle    ?? null,
                 equipment:     ex.exercises?.equipment ?? null,
-                video_url:     ex.exercises?.video_url ?? null,
-                gif_url:       ex.exercises?.gif_url   ?? null,
+                video_url:     ex.video_url ?? ex.exercises?.video_url ?? null,
+                gif_url:       ex.gif_url   ?? ex.exercises?.gif_url   ?? null,
                 sets: (ex.sets || []).sort((a: any, b: any) => a.sort_order - b.sort_order),
               })),
           })),
