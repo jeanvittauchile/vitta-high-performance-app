@@ -365,6 +365,55 @@ function SessionDetailsSheet({ session, onClose }: { session: SessRow; onClose: 
   );
 }
 
+// ─── Helpers ─────────────────────────────────────────────────
+
+function offsetToDate(offset: number): Date {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  return d;
+}
+
+function formatDateLabel(d: Date, offset: number): string {
+  if (offset === 0) return 'Hoy';
+  if (offset === -1) return 'Ayer';
+  if (offset === 1) return 'Mañana';
+  return d.toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+function toISODate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// ─── DateNav ─────────────────────────────────────────────────
+
+function DateNav({ dateLabel, currentDate, dateOffset, setDateOffset }: {
+  dateLabel: string;
+  currentDate: Date;
+  dateOffset: number;
+  setDateOffset: (fn: (o: number) => number) => void;
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+      <button
+        onClick={() => setDateOffset((o: number) => o - 1)}
+        style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid var(--d-border-strong)', background: 'transparent', color: 'var(--d-text)', fontSize: 18, cursor: 'pointer', display: 'grid', placeItems: 'center' }}
+      >‹</button>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--d-text)' }}>{dateLabel}</div>
+        {dateOffset !== 0 && (
+          <div style={{ fontSize: 11, color: 'var(--d-text-faint)' }}>
+            {currentDate.toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' })}
+          </div>
+        )}
+      </div>
+      <button
+        onClick={() => setDateOffset((o: number) => o + 1)}
+        style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid var(--d-border-strong)', background: 'transparent', color: 'var(--d-text)', fontSize: 18, cursor: 'pointer', display: 'grid', placeItems: 'center' }}
+      >›</button>
+    </div>
+  );
+}
+
 // ─── Page ────────────────────────────────────────────────────
 
 export default function TodayPage() {
@@ -373,6 +422,7 @@ export default function TodayPage() {
   const [loading, setLoading] = useState(true);
   const [activeExercise, setActiveExercise] = useState<{ ex: ExRow; catId: CategoryId } | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [dateOffset, setDateOffset] = useState(0);
 
   // ─── Timer ─────────────────────────────────────────────────
   const [timerStart, setTimerStart] = useState<number | null>(null);
@@ -389,10 +439,9 @@ export default function TodayPage() {
 
   latestFeedbackRef.current = feedback;
 
-  const fetchSession = useCallback(async () => {
+  const fetchSession = useCallback(async (offset: number) => {
     if (!athleteId) { setLoading(false); return; }
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const targetDate = toISODate(offsetToDate(offset));
     const supabase = createClient();
     const { data } = await supabase
       .from('sessions')
@@ -408,7 +457,7 @@ export default function TodayPage() {
         )
       `)
       .eq('athlete_id', athleteId)
-      .eq('date', today)
+      .eq('date', targetDate)
       .order('created_at')
       .limit(1)
       .maybeSingle();
@@ -443,8 +492,8 @@ export default function TodayPage() {
   }, [athleteId]);
 
   useEffect(() => {
-    if (!authLoading) fetchSession();
-  }, [authLoading, fetchSession]);
+    if (!authLoading) { setLoading(true); fetchSession(dateOffset); }
+  }, [authLoading, fetchSession, dateOffset]);
 
   // Restore timer from localStorage when session loads
   useEffect(() => {
@@ -551,13 +600,26 @@ export default function TodayPage() {
     );
   }
 
+  const currentDate = offsetToDate(dateOffset);
+  const dateLabel = formatDateLabel(currentDate, dateOffset);
+
   if (!session) {
     return (
-      <div style={{ padding: '40px 16px', textAlign: 'center' }}>
-        <div style={{ fontSize: 32, marginBottom: 12 }}>🌿</div>
-        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--d-text)', marginBottom: 6 }}>Sin sesión hoy</div>
-        <div style={{ fontSize: 13, color: 'var(--d-text-muted)', lineHeight: 1.5 }}>
-          No tienes sesión planificada para hoy.<br/>Descansa o contacta a tu coach.
+      <div style={{ padding: '16px 16px 28px' }}>
+        <DateNav dateLabel={dateLabel} currentDate={currentDate} dateOffset={dateOffset} setDateOffset={setDateOffset}/>
+        <div style={{ padding: '40px 0', textAlign: 'center' }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>🌿</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--d-text)', marginBottom: 6 }}>Sin sesión</div>
+          <div style={{ fontSize: 13, color: 'var(--d-text-muted)', lineHeight: 1.5 }}>
+            No hay sesión planificada para {dateLabel.toLowerCase()}.<br/>
+            {dateOffset === 0 && 'Descansa o contacta a tu coach.'}
+          </div>
+          {dateOffset !== 0 && (
+            <button
+              onClick={() => setDateOffset(0)}
+              style={{ marginTop: 16, padding: '8px 18px', borderRadius: 10, border: '1px solid var(--d-border-strong)', background: 'transparent', color: 'var(--d-text-muted)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            >Volver a hoy</button>
+          )}
         </div>
       </div>
     );
@@ -571,6 +633,7 @@ export default function TodayPage() {
 
   return (
     <div style={{ padding: '16px 16px 28px' }}>
+      <DateNav dateLabel={dateLabel} currentDate={currentDate} dateOffset={dateOffset} setDateOffset={setDateOffset}/>
       {/* Hero */}
       <div style={{
         position: 'relative', overflow: 'hidden',
