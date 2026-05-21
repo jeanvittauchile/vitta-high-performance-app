@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
 import { useAthlete } from '@/lib/athlete-context';
 import { CATEGORIES } from '@/lib/constants';
-import { getCategoryIcon, PlayIcon, InfoIcon, CheckIcon, ChevronDown, XIcon, PauseIcon } from '@/components/icons';
+import { getCategoryIcon, PlayIcon, InfoIcon, CheckIcon, ChevronDown, XIcon, PauseIcon, TimerIcon } from '@/components/icons';
 import LevelBadge from '@/components/badges/LevelBadge';
 import ExerciseSheet from '@/components/athlete/ExerciseSheet';
 import type { SessionExercise, LevelId, CategoryId } from '@/lib/types';
@@ -85,6 +85,66 @@ function formatTime(totalSeconds: number) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+function parseRest(str: string | null | undefined): number {
+  if (!str || str === '—') return 0;
+  // "2:00" → 120, "90s" → 90, "1:30" → 90, "120" → 120
+  const colonMatch = str.match(/^(\d+):(\d{2})$/);
+  if (colonMatch) return parseInt(colonMatch[1]) * 60 + parseInt(colonMatch[2]);
+  const secondsMatch = str.match(/^(\d+)s?$/i);
+  if (secondsMatch) return parseInt(secondsMatch[1]);
+  return 0;
+}
+
+interface RestTimerState { targetSecs: number; startedAt: number; }
+
+function RestTimerBar({ timer, onStop }: { timer: RestTimerState; onStop: () => void }) {
+  const [elapsed, setElapsed] = useState(() => Math.floor((Date.now() - timer.startedAt) / 1000));
+
+  useEffect(() => {
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - timer.startedAt) / 1000)), 500);
+    return () => clearInterval(id);
+  }, [timer.startedAt]);
+
+  const remaining = Math.max(0, timer.targetSecs - elapsed);
+  const done = remaining === 0;
+  const progress = timer.targetSecs > 0 ? Math.min(1, elapsed / timer.targetSecs) : 1;
+
+  return (
+    <div style={{
+      position: 'fixed', bottom: 64, left: 0, right: 0, zIndex: 150,
+      maxWidth: 430, margin: '0 auto',
+      padding: '0 12px',
+    }}>
+      <div style={{
+        background: done ? 'rgba(43,182,115,0.95)' : 'rgba(14,25,54,0.97)',
+        border: `1px solid ${done ? 'rgba(43,182,115,0.6)' : 'var(--d-border-strong)'}`,
+        borderRadius: 16,
+        padding: '12px 14px',
+        backdropFilter: 'blur(12px)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <TimerIcon size={16} stroke={done ? '#fff' : 'var(--d-text-muted)'}/>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: done ? 'rgba(255,255,255,0.8)' : 'var(--d-text-faint)', marginBottom: 2 }}>
+              {done ? 'Descanso completado' : 'Descanso'}
+            </div>
+            <div style={{ height: 4, borderRadius: 2, background: done ? 'rgba(255,255,255,0.3)' : 'var(--d-border-strong)', overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${progress * 100}%`, background: done ? '#fff' : 'var(--vitta-blue)', borderRadius: 2, transition: 'width 0.5s linear' }}/>
+            </div>
+          </div>
+          <div className="display tnum" style={{ fontSize: 26, color: done ? '#fff' : 'var(--vitta-cream)', minWidth: 56, textAlign: 'right' }}>
+            {done ? '0:00' : formatTime(remaining)}
+          </div>
+          <button onClick={onStop} style={{ width: 30, height: 30, borderRadius: 15, border: `1px solid ${done ? 'rgba(255,255,255,0.4)' : 'var(--d-border-strong)'}`, background: 'transparent', color: done ? '#fff' : 'var(--d-text-muted)', display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0 }}>
+            <XIcon size={13}/>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
     <div>
@@ -132,11 +192,12 @@ function ActualInput({ label, value, setId, field }: {
 
 // ─── ExerciseRow ─────────────────────────────────────────────
 
-function ExerciseRow({ ex, block, onToggleSet, onOpen }: {
+function ExerciseRow({ ex, block, onToggleSet, onOpen, onStartRest }: {
   ex: ExRow;
   block: BlRow;
   onToggleSet: (setId: string, done: boolean) => void;
   onOpen: () => void;
+  onStartRest: (secs: number) => void;
 }) {
   const allDone = ex.sets.length > 0 && ex.sets.every(s => s.done);
   return (
@@ -195,6 +256,14 @@ function ExerciseRow({ ex, block, onToggleSet, onOpen }: {
                   <ActualInput label="Reps reales" value={s.actual_reps} setId={s.id} field="actual_reps"/>
                   <ActualInput label="Carga (kg)" value={s.actual_load} setId={s.id} field="actual_load"/>
                   <ActualInput label="RPE real" value={s.actual_rpe} setId={s.id} field="actual_rpe"/>
+                  {parseRest(s.rest) > 0 && (
+                    <button
+                      onClick={() => onStartRest(parseRest(s.rest))}
+                      style={{ gridColumn: '1 / -1', marginTop: 4, padding: '7px 10px', borderRadius: 8, border: '1px solid rgba(43,182,115,0.35)', background: 'rgba(43,182,115,0.10)', color: 'var(--green)', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                    >
+                      <TimerIcon size={12} stroke="currentColor"/> Iniciar descanso · {s.rest}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -211,11 +280,12 @@ function ExerciseRow({ ex, block, onToggleSet, onOpen }: {
 
 // ─── BlockCard ───────────────────────────────────────────────
 
-function BlockCard({ block, index, onToggleSet, onOpenExercise }: {
+function BlockCard({ block, index, onToggleSet, onOpenExercise, onStartRest }: {
   block: BlRow;
   index: number;
   onToggleSet: (setId: string, done: boolean) => void;
   onOpenExercise: (ex: ExRow) => void;
+  onStartRest: (secs: number) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
   const CatIcon = getCategoryIcon(block.category);
@@ -250,6 +320,7 @@ function BlockCard({ block, index, onToggleSet, onOpenExercise }: {
               block={block}
               onToggleSet={onToggleSet}
               onOpen={() => onOpenExercise(ex)}
+              onStartRest={onStartRest}
             />
           ))}
           {block.session_exercises.length === 0 && (
@@ -431,9 +502,12 @@ export default function TodayPage() {
   const [showDetails, setShowDetails] = useState(false);
   const [dateOffset, setDateOffset] = useState(0);
 
-  // ─── Timer ─────────────────────────────────────────────────
+  // ─── Session timer ─────────────────────────────────────────
   const [timerStart, setTimerStart] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
+
+  // ─── Rest timer ────────────────────────────────────────────
+  const [restTimer, setRestTimer] = useState<RestTimerState | null>(null);
 
   // ─── Feedback ──────────────────────────────────────────────
   const [feedback, setFeedback] = useState({ sleepHours: 7, energyLevel: 0, painLevel: '' });
@@ -713,6 +787,7 @@ export default function TodayPage() {
             index={bi}
             onToggleSet={toggleSet}
             onOpenExercise={ex => setActiveExercise({ ex, catId: block.category })}
+            onStartRest={secs => setRestTimer({ targetSecs: secs, startedAt: Date.now() })}
           />
         ))}
       </div>
@@ -772,6 +847,10 @@ export default function TodayPage() {
           </div>
         </div>
       </div>
+
+      {restTimer && (
+        <RestTimerBar timer={restTimer} onStop={() => setRestTimer(null)}/>
+      )}
 
       {activeExercise && (
         <ExerciseSheet

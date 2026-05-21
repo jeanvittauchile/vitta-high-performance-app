@@ -181,6 +181,7 @@ export const CheckIcon = ({ size = 20, stroke, strokeWidth = 2, style }: IconPro
   </svg>
 );
 export const XIcon = (p: IconProps) => <Icon {...p} d="M18 6L6 18M6 6l12 12"/>;
+export const TimerIcon = (p: IconProps) => <Icon {...p} d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zM12 6v6l4 2"/>;
 export const PlayIcon = (p: IconProps) => <Icon {...p} fill="currentColor" stroke="none" d="M5 3l14 9-14 9V3z"/>;
 export const PauseIcon = (p: IconProps) => (
   <Icon {...p}>
