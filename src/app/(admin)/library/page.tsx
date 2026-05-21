@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase';
 import { CATEGORIES, LEVELS } from '@/lib/constants';
-import { getCategoryIcon, PlusIcon, SearchIcon, CopyIcon, XIcon, VideoIcon, ExternalLinkIcon, PencilIcon, CheckIcon } from '@/components/icons';
+import { getCategoryIcon, PlusIcon, SearchIcon, CopyIcon, XIcon, VideoIcon, ExternalLinkIcon, PencilIcon, CheckIcon, TrashIcon } from '@/components/icons';
 import LevelBadge from '@/components/badges/LevelBadge';
 import type { CategoryId, LevelId } from '@/lib/types';
 
@@ -453,6 +453,7 @@ export default function LibraryPage() {
   const [addToSessionEx, setAddToSessionEx] = useState<LibExercise | null>(null);
   const [detailEx, setDetailEx] = useState<LibExercise | null>(null);
   const [editEx, setEditEx] = useState<LibExercise | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const fetchExercises = useCallback(() => {
     const supabase = createClient();
@@ -480,6 +481,15 @@ export default function LibraryPage() {
   }, []);
 
   useEffect(() => { fetchExercises(); }, [fetchExercises]);
+
+  async function deleteExercise(dbId: string) {
+    const supabase = createClient();
+    const { error } = await supabase.from('exercises').delete().eq('id', dbId);
+    if (!error) {
+      setExercises(prev => prev.filter(ex => ex.dbId !== dbId));
+    }
+    setConfirmDeleteId(null);
+  }
 
   const filtered = exercises
     .filter(ex => activeCat   === 'all' || ex.category === activeCat)
@@ -582,12 +592,12 @@ export default function LibraryPage() {
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           {/* Table header */}
           <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 72px minmax(0,220px) 20px 26px 26px',
+            display: 'grid', gridTemplateColumns: '1fr 72px minmax(0,220px) 20px 26px 26px 26px',
             gap: 10, padding: '7px 14px',
             background: 'var(--surface-2)', borderBottom: '1px solid var(--border)',
             fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)',
           }}>
-            <div>Ejercicio</div><div>Nivel</div><div>Músculo · Equipo</div><div/><div/><div/>
+            <div>Ejercicio</div><div>Nivel</div><div>Músculo · Equipo</div><div/><div/><div/><div/>
           </div>
 
           {Object.entries(grouped).map(([catId, exs]) => {
@@ -610,11 +620,12 @@ export default function LibraryPage() {
                 {exs.map((ex, i) => (
                   <div
                     key={ex.id}
+                    onClick={() => { if (confirmDeleteId && confirmDeleteId !== ex.dbId) setConfirmDeleteId(null); }}
                     style={{
-                      display: 'grid', gridTemplateColumns: '1fr 72px minmax(0,220px) 20px 26px 26px',
+                      display: 'grid', gridTemplateColumns: '1fr 72px minmax(0,220px) 20px 26px 26px 26px',
                       gap: 10, padding: '7px 14px', alignItems: 'center',
                       borderBottom: i < exs.length - 1 ? '1px solid var(--border)' : '1px solid var(--border)',
-                      background: 'white',
+                      background: confirmDeleteId === ex.dbId ? 'rgba(215,71,75,0.04)' : 'white',
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
@@ -645,6 +656,25 @@ export default function LibraryPage() {
                     >
                       <PencilIcon size={13}/>
                     </button>
+                    {confirmDeleteId === ex.dbId ? (
+                      <button
+                        onClick={() => deleteExercise(ex.dbId)}
+                        title="Confirmar eliminación"
+                        style={{ background: '#D7474B', border: 'none', cursor: 'pointer', color: '#fff', display: 'grid', placeItems: 'center', borderRadius: 5, padding: 4, width: 26, height: 26 }}
+                      >
+                        <CheckIcon size={12} stroke="#fff" strokeWidth={3}/>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDeleteId(ex.dbId)}
+                        title="Eliminar ejercicio"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'grid', placeItems: 'center', borderRadius: 5, padding: 4, width: 26, height: 26, opacity: 0.6 }}
+                        onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                        onMouseLeave={e => (e.currentTarget.style.opacity = '0.6')}
+                      >
+                        <TrashIcon size={13}/>
+                      </button>
+                    )}
                     <button
                       onClick={() => setAddToSessionEx(ex)}
                       title="Agregar a sesión"

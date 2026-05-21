@@ -14,6 +14,8 @@ export const CATEGORIES: Record<string, Category> = {
   preventivos:        { id: 'preventivos',        label: 'Preventivos',             short: 'PRV', color: '#5C6480', iconKey: 'shield'    },
   movilidad:          { id: 'movilidad',          label: 'Movilidad General',       short: 'MOV', color: '#9098AE', iconKey: 'mobility'  },
   coordinacion:       { id: 'coordinacion',       label: 'Coordinación Compleja',   short: 'COR', color: '#6E59E0', iconKey: 'coord'     },
+  deportivo:          { id: 'deportivo',          label: 'Deportivo',               short: 'DEP', color: '#F59E0B', iconKey: 'deportivo'  },
+  desafio:            { id: 'desafio',            label: 'Desafío',                 short: 'DES', color: '#EC4899', iconKey: 'desafio'   },
 };
 
 export const LEVELS: Record<string, Level> = {
