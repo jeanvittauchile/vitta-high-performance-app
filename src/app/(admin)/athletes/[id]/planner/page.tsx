@@ -20,12 +20,21 @@ interface DbSet {
 
 interface DbExercise {
   id: string;
+  exercise_id: string | null;
   name: string;
   level: LevelId | null;
   note: string | null;
   sort_order: number;
   video_url: string | null;
   sets: DbSet[];
+}
+
+interface LibEx {
+  id: string;
+  name: string;
+  level: LevelId;
+  video_url: string | null;
+  gif_url: string | null;
 }
 
 interface DbBlock {
@@ -256,13 +265,14 @@ function AddExerciseForm({ blockId, category, onSaved, onCancel }: {
   const [level, setLevel] = useState<LevelId>('basico');
   const [note, setNote] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
+  const [exerciseId, setExerciseId] = useState<string | null>(null);
   const [draftSets, setDraftSets] = useState<SetDraft[]>([
     { id: 1, reps: '5', load: '', rpe: '7', rest: '2:00' },
     { id: 2, reps: '5', load: '', rpe: '7', rest: '2:00' },
     { id: 3, reps: '5', load: '', rpe: '7', rest: '2:00' },
   ]);
   const [counter, setCounter] = useState(4);
-  const [libNames, setLibNames] = useState<string[]>([]);
+  const [libExercises, setLibExercises] = useState<LibEx[]>([]);
   const [showSugg, setShowSugg] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -271,11 +281,11 @@ function AddExerciseForm({ blockId, category, onSaved, onCancel }: {
   const si: React.CSSProperties  = { padding: '5px 7px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 11, fontFamily: 'inherit', color: 'var(--text)', width: '100%' };
 
   useEffect(() => {
-    createClient().from('exercises').select('name').eq('category', category).order('name')
-      .then(({ data }) => setLibNames(data?.map((e: any) => e.name) || []));
+    createClient().from('exercises').select('id, name, level, video_url, gif_url').eq('category', category).order('name')
+      .then(({ data }) => setLibExercises((data as LibEx[]) || []));
   }, [category]);
 
-  const suggestions = libNames.filter(n => !name.trim() || n.toLowerCase().includes(name.toLowerCase()));
+  const suggestions = libExercises.filter(e => !name.trim() || e.name.toLowerCase().includes(name.toLowerCase()));
 
   function addRow() {
     setDraftSets(prev => [...prev, { id: counter, reps: '', load: '', rpe: '', rest: '' }]);
@@ -304,7 +314,7 @@ function AddExerciseForm({ blockId, category, onSaved, onCancel }: {
     const nextSort = ((existing?.[0]?.sort_order ?? -1) as number) + 1;
     const { data: exData, error: exErr } = await supabase
       .from('session_exercises')
-      .insert({ block_id: blockId, name: name.trim(), level, note: note.trim() || null, sort_order: nextSort, video_url: videoUrl.trim() || null })
+      .insert({ block_id: blockId, exercise_id: exerciseId, name: name.trim(), level, note: note.trim() || null, sort_order: nextSort, video_url: videoUrl.trim() || null })
       .select('id').single();
     if (exErr) { setSaveError(exErr.message); setSaving(false); return; }
     if (exData && draftSets.length > 0) {
@@ -334,20 +344,29 @@ function AddExerciseForm({ blockId, category, onSaved, onCancel }: {
           <input
             placeholder="Nombre del ejercicio"
             value={name}
-            onChange={e => { setName(e.target.value); setShowSugg(true); }}
+            onChange={e => { setName(e.target.value); setExerciseId(null); setShowSugg(true); }}
             onFocus={() => setShowSugg(true)}
             onBlur={() => setTimeout(() => setShowSugg(false), 160)}
             style={{ ...inp, width: '100%', boxSizing: 'border-box' }}
           />
           {showSugg && suggestions.length > 0 && (
             <div style={{ position: 'absolute', top: 'calc(100% + 2px)', left: 0, right: 0, zIndex: 200, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.18)', maxHeight: 200, overflowY: 'auto' }}>
-              {suggestions.slice(0, 12).map((n, i) => (
-                <button key={i} type="button"
-                  onMouseDown={() => { setName(n); setShowSugg(false); }}
+              {suggestions.slice(0, 12).map((ex, i) => (
+                <button key={ex.id} type="button"
+                  onMouseDown={() => {
+                    setName(ex.name);
+                    setExerciseId(ex.id);
+                    setLevel(ex.level);
+                    if (ex.video_url || ex.gif_url) setVideoUrl(ex.video_url || ex.gif_url || '');
+                    setShowSugg(false);
+                  }}
                   style={{ width: '100%', padding: '8px 12px', textAlign: 'left', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text)', borderTop: i > 0 ? '1px solid var(--border)' : 'none', fontFamily: 'inherit' }}
                   onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                >{n}</button>
+                >
+                  <span>{ex.name}</span>
+                  {(ex.video_url || ex.gif_url) && <span style={{ fontSize: 10, color: 'var(--vitta-blue)', marginLeft: 6 }}>· video</span>}
+                </button>
               ))}
             </div>
           )}
@@ -836,7 +855,7 @@ function CopySessionModal({ session, athleteId, onClose, onCopied }: {
       for (const ex of block.session_exercises) {
         const { data: newEx, error: e3 } = await supabase
           .from('session_exercises')
-          .insert({ block_id: newBlock.id, name: ex.name, level: ex.level, note: ex.note, sort_order: ex.sort_order })
+          .insert({ block_id: newBlock.id, exercise_id: ex.exercise_id, name: ex.name, level: ex.level, note: ex.note, sort_order: ex.sort_order, video_url: ex.video_url })
           .select('id')
           .single();
         if (e3 || !newEx) continue;
@@ -966,7 +985,7 @@ export default function PlannerPage() {
         session_blocks (
           id, name, category, color, sort_order,
           session_exercises (
-            id, name, level, note, sort_order, video_url,
+            id, exercise_id, name, level, note, sort_order, video_url,
             sets ( id, reps, load, rpe_target, rest, sort_order )
           )
         )
