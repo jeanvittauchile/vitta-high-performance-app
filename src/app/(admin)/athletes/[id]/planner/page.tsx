@@ -930,8 +930,6 @@ export default function PlannerPage() {
   const [addExerciseFor, setAddExerciseFor] = useState<string | null>(null);
   const [expandedEx, setExpandedEx] = useState<Set<string>>(new Set());
   const [addSetFor, setAddSetFor] = useState<string | null>(null);
-  const [editVideoFor, setEditVideoFor] = useState<string | null>(null);
-  const [editVideoVal, setEditVideoVal] = useState('');
   const [doneBlocks, setDoneBlocks] = useState<Set<string>>(new Set());
   const [collapsedBlocks, setCollapsedBlocks] = useState<Set<string>>(new Set());
   const [duplicating, setDuplicating] = useState(false);
@@ -1105,22 +1103,22 @@ export default function PlannerPage() {
     })));
   }
 
-  // ── Save video URL for existing exercise ───────────────────
-  async function saveVideoUrl(exerciseId: string, blockId: string, url: string) {
+  // ── Update set field ───────────────────────────────────────
+  async function updateSet(setId: string, field: 'reps' | 'load' | 'rpe_target' | 'rest', raw: string, exerciseId: string, blockId: string) {
+    const value = field === 'rpe_target' ? (raw ? parseFloat(raw) : null) : (raw.trim() || null);
     const supabase = createClient();
-    await supabase.from('session_exercises').update({ video_url: url.trim() || null }).eq('id', exerciseId);
+    await supabase.from('sets').update({ [field]: value }).eq('id', setId);
     setDaySessions(prev => prev.map(s => ({
       ...s,
       session_blocks: s.session_blocks.map(b =>
         b.id === blockId ? {
           ...b,
           session_exercises: b.session_exercises.map(e =>
-            e.id === exerciseId ? { ...e, video_url: url.trim() || null } : e
+            e.id === exerciseId ? { ...e, sets: e.sets.map(st => st.id === setId ? { ...st, [field]: value } : st) } : e
           ),
         } : b
       ),
     })));
-    setEditVideoFor(null);
   }
 
   // ── Delete set ─────────────────────────────────────────────
@@ -1548,11 +1546,6 @@ export default function PlannerPage() {
                                           </div>
                                           {item.note && <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>{item.note}</div>}
                                         </div>
-                                        <button onClick={e => { e.stopPropagation(); setEditVideoFor(editVideoFor === item.id ? null : item.id); setEditVideoVal(item.video_url || ''); }}
-                                          title={item.video_url ? 'Editar video' : 'Añadir video'}
-                                          style={{ background: 'transparent', border: 'none', color: item.video_url ? 'var(--vitta-blue)' : 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', opacity: 0.8 }}>
-                                          <PencilIcon size={13}/>
-                                        </button>
                                         <button onClick={e => { e.stopPropagation(); deleteExercise(item.id, block.id); }}
                                           style={{ background: 'transparent', border: 'none', color: '#D7474B', cursor: 'pointer', padding: '2px 4px', opacity: 0.7 }}>
                                           <TrashIcon size={13}/>
@@ -1560,43 +1553,29 @@ export default function PlannerPage() {
                                         <ChevronDown size={14} style={{ color: 'var(--text-muted)', transition: 'transform 0.15s', transform: isExpanded ? 'rotate(180deg)' : 'none', flexShrink: 0 }}/>
                                       </div>
 
-                                      {editVideoFor === item.id && (
-                                        <div onClick={e => e.stopPropagation()} style={{ borderTop: '1px solid var(--border)', padding: '8px 10px', display: 'flex', gap: 6, alignItems: 'center', background: 'rgba(46,107,214,0.04)' }}>
-                                          <input
-                                            type="url"
-                                            value={editVideoVal}
-                                            onChange={e => setEditVideoVal(e.target.value)}
-                                            placeholder="URL de video o GIF"
-                                            autoFocus
-                                            style={{ flex: 1, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 11, fontFamily: 'inherit', color: 'var(--text)' }}
-                                          />
-                                          <button onClick={() => saveVideoUrl(item.id, block.id, editVideoVal)} className="btn btn-primary btn-sm" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
-                                            <CheckIcon size={11}/>Guardar
-                                          </button>
-                                          <button onClick={() => setEditVideoFor(null)} className="btn btn-ghost btn-sm" style={{ fontSize: 13 }}>×</button>
-                                        </div>
-                                      )}
-
                                       {isExpanded && (
                                         <div style={{ borderTop: '1px solid var(--border)' }}>
                                           {item.sets.length > 0 && (
                                             <>
-                                              <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 1fr 50px 1fr 22px', gap: 8, padding: '5px 12px', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700 }}>
+                                              <div style={{ display: 'grid', gridTemplateColumns: '20px 1fr 1fr 46px 1fr 22px', gap: 6, padding: '5px 12px', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700 }}>
                                                 <div>SET</div><div>REPS</div><div>KG</div><div>RPE</div><div>DESCANSO</div><div/>
                                               </div>
-                                              {item.sets.map((s, si) => (
-                                                <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '28px 1fr 1fr 50px 1fr 22px', gap: 8, padding: '5px 12px', alignItems: 'center', borderTop: '1px solid var(--border)', fontSize: 11 }}>
-                                                  <span className="mono" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>{si + 1}</span>
-                                                  <span className="mono">{s.reps || '—'}</span>
-                                                  <span className="mono">{s.load ? `${s.load} kg` : '—'}</span>
-                                                  <span className="mono" style={{ color: s.rpe_target ? 'var(--vitta-blue)' : 'var(--text-muted)' }}>{s.rpe_target ?? '—'}</span>
-                                                  <span className="mono" style={{ color: 'var(--text-muted)' }}>{s.rest || '—'}</span>
+                                              {item.sets.map((s, si) => {
+                                                const si_css: React.CSSProperties = { padding: '3px 5px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--surface-2)', fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text)', width: '100%', boxSizing: 'border-box' as const };
+                                                return (
+                                                <div key={s.id} onClick={e => e.stopPropagation()} style={{ display: 'grid', gridTemplateColumns: '20px 1fr 1fr 46px 1fr 22px', gap: 6, padding: '4px 12px', alignItems: 'center', borderTop: '1px solid var(--border)' }}>
+                                                  <span className="mono" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)' }}>{si + 1}</span>
+                                                  <input defaultValue={s.reps ?? ''} placeholder="—" onBlur={e => updateSet(s.id, 'reps', e.target.value, item.id, block.id)} style={si_css}/>
+                                                  <input defaultValue={s.load ?? ''} placeholder="—" type="number" min={0} step={0.5} onBlur={e => updateSet(s.id, 'load', e.target.value, item.id, block.id)} style={si_css}/>
+                                                  <input defaultValue={s.rpe_target != null ? String(s.rpe_target) : ''} placeholder="—" type="number" min={1} max={10} step={0.5} onBlur={e => updateSet(s.id, 'rpe_target', e.target.value, item.id, block.id)} style={si_css}/>
+                                                  <input defaultValue={s.rest ?? ''} placeholder="—" onBlur={e => updateSet(s.id, 'rest', e.target.value, item.id, block.id)} style={si_css}/>
                                                   <button onClick={e => { e.stopPropagation(); deleteSet(s.id, item.id, block.id); }}
                                                     style={{ background: 'transparent', border: 'none', color: '#D7474B', cursor: 'pointer', padding: '1px 0', opacity: 0.6, display: 'grid', placeItems: 'center' }}>
                                                     <XIcon size={11}/>
                                                   </button>
                                                 </div>
-                                              ))}
+                                                );
+                                              })}
                                             </>
                                           )}
                                           {addSetFor === item.id ? (
