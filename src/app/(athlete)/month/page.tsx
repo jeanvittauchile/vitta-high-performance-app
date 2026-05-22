@@ -37,8 +37,24 @@ function weekRangeLabel(year: number, month: number, w: number): string {
   return `${fmt(start)} – ${fmt(end)}`;
 }
 
-function defaultPlan(): DayType[][] {
-  return Array.from({ length: 4 }, () => Array(7).fill('REST') as DayType[]);
+type PlanCell = DayType[];
+
+function defaultPlan(): PlanCell[][] {
+  return Array.from({ length: 4 }, () => Array.from({ length: 7 }, () => ['REST' as DayType]));
+}
+
+function normalizePlan(raw: any): PlanCell[][] {
+  if (!Array.isArray(raw)) return defaultPlan();
+  return Array.from({ length: 4 }, (_, wi) => {
+    const week = raw[wi];
+    if (!Array.isArray(week)) return Array.from({ length: 7 }, () => ['REST' as DayType]);
+    return Array.from({ length: 7 }, (_, di) => {
+      const cell = week[di];
+      if (Array.isArray(cell)) return cell.length > 0 ? (cell as DayType[]) : ['REST' as DayType];
+      if (typeof cell === 'string') return [cell as DayType];
+      return ['REST' as DayType];
+    });
+  });
 }
 
 export default function MonthPage() {
@@ -47,7 +63,7 @@ export default function MonthPage() {
   const now = new Date();
   const [year, setYear]   = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [plan, setPlan]   = useState<DayType[][] | null>(null);
+  const [plan, setPlan]   = useState<PlanCell[][] | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedWeek, setExpandedWeek] = useState<number | null>(null);
   const [selectedDayISO, setSelectedDayISO] = useState<string | null>(null);
@@ -85,7 +101,7 @@ export default function MonthPage() {
       .maybeSingle()
       .then(({ data, error }) => {
         if (error) console.error('month_plans error:', error);
-        setPlan(data?.plan ?? null);
+        setPlan(data?.plan ? normalizePlan(data.plan) : null);
         setLoading(false);
       });
   }, [athleteId, authLoading, year, month]);
@@ -152,7 +168,7 @@ export default function MonthPage() {
 
   // Computed stats
   const totalTrainDays = plan
-    ? displayPlan.reduce((s, w) => s + w.filter(d => d !== 'REST').length, 0)
+    ? displayPlan.reduce((s, w) => s + w.filter(c => c.some(t => t !== 'REST')).length, 0)
     : Object.keys(sessionStatus).length;
   const completedDays  = Object.values(sessionStatus).filter(s => s === 'done').length;
   const partialDays    = Object.values(sessionStatus).filter(s => s === 'partial').length;
@@ -226,7 +242,7 @@ export default function MonthPage() {
           {displayPlan.map((week, wi) => {
             const expanded = expandedWeek === wi;
             const weekDates = Array.from({ length: 7 }, (_, di) => cellDate(year, month, wi, di).toISOString().slice(0, 10));
-            const weekTrainCount = week.filter((d, di) => d !== 'REST' || !!sessionStatus[weekDates[di]]).length;
+            const weekTrainCount = week.filter((c, di) => c.some(t => t !== 'REST') || !!sessionStatus[weekDates[di]]).length;
             const weekDone    = weekDates.filter(d => sessionStatus[d] === 'done').length;
             const weekPartial = weekDates.filter(d => sessionStatus[d] === 'partial').length;
 
@@ -248,10 +264,11 @@ export default function MonthPage() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 3 }}>
-                    {week.map((d, di) => {
+                    {week.map((c, di) => {
                       const hasActualSession = sessionStatus[weekDates[di]] !== undefined;
-                      const isRest = d === 'REST' && !hasActualSession;
-                      const color = isRest ? 'var(--d-border)' : (d !== 'REST' ? (DAY_TYPES[d]?.color || '#2E6BD6') : '#2E6BD6');
+                      const primaryType = c.find(t => t !== 'REST') || 'REST';
+                      const isRest = primaryType === 'REST' && !hasActualSession;
+                      const color = isRest ? 'var(--d-border)' : (DAY_TYPES[primaryType]?.color || '#2E6BD6');
                       return <div key={di} style={{ width: 6, height: 18, borderRadius: 1.5, background: color, opacity: isRest ? 0.5 : 0.85 }}/>;
                     })}
                   </div>
@@ -259,16 +276,18 @@ export default function MonthPage() {
 
                 {expanded && (
                   <div style={{ padding: '0 8px 12px', display: 'grid', gap: 5 }}>
-                    {week.map((d, di) => {
+                    {week.map((c, di) => {
                       const date = cellDate(year, month, wi, di);
                       const dateISO = date.toISOString().slice(0, 10);
                       const isToday = dateISO === todayISO;
                       const dayNum = date.getDate();
                       const hasActualSession = sessionStatus[dateISO] !== undefined;
-                      const hasSession = d !== 'REST' || hasActualSession;
-                      const t = (d === 'REST' && hasActualSession)
+                      const primaryType = c.find(t => t !== 'REST') || 'REST';
+                      const hasSession = primaryType !== 'REST' || hasActualSession;
+                      const t = (primaryType === 'REST' && hasActualSession)
                         ? { label: 'Programado', color: '#2E6BD6', bg: 'rgba(46,107,214,0.14)' }
-                        : (DAY_TYPES[d] || DAY_TYPES.REST);
+                        : (DAY_TYPES[primaryType] || DAY_TYPES.REST);
+                      const extraTypes = c.filter(type => type !== 'REST' && type !== primaryType);
                       const isSelected = selectedDayISO === dateISO;
                       const sessionData = daySessions[dateISO];
                       const completion = sessionStatus[dateISO];
@@ -293,9 +312,14 @@ export default function MonthPage() {
                           >
                             <div className="mono" style={{ fontSize: 11, color: 'var(--d-text-faint)', fontWeight: 700 }}>{DAY_LABELS[di]}</div>
                             <div className="display tnum" style={{ fontSize: 16, color: isToday ? 'var(--vitta-blue-bright)' : 'var(--d-text)' }}>{dayNum}</div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flexWrap: 'wrap' }}>
                               {hasSession && <div style={{ width: 8, height: 8, borderRadius: 4, background: t.color, flexShrink: 0 }}/>}
                               <span style={{ fontSize: 13, color: hasSession ? 'var(--d-text)' : 'var(--d-text-faint)', fontWeight: hasSession ? 500 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.label}</span>
+                              {extraTypes.map((type, idx) => {
+                                const tt = DAY_TYPES[type];
+                                if (!tt) return null;
+                                return <span key={idx} style={{ padding: '1px 5px', borderRadius: 4, background: tt.bg, color: tt.color, fontSize: 9, fontWeight: 700, flexShrink: 0 }}>{type}</span>;
+                              })}
                               {isToday && <span style={{ padding: '2px 6px', borderRadius: 4, background: 'var(--vitta-blue)', color: '#fff', fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', flexShrink: 0 }}>HOY</span>}
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>

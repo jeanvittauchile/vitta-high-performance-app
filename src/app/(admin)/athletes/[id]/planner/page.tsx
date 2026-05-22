@@ -76,8 +76,24 @@ function toISO(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-function defaultPlan(): DayType[][] {
-  return Array.from({ length: 4 }, () => Array(7).fill('REST') as DayType[]);
+type PlanCell = DayType[];
+
+function defaultPlan(): PlanCell[][] {
+  return Array.from({ length: 4 }, () => Array.from({ length: 7 }, () => ['REST' as DayType]));
+}
+
+function normalizePlan(raw: any): PlanCell[][] {
+  if (!Array.isArray(raw)) return defaultPlan();
+  return Array.from({ length: 4 }, (_, wi) => {
+    const week = raw[wi];
+    if (!Array.isArray(week)) return Array.from({ length: 7 }, () => ['REST' as DayType]);
+    return Array.from({ length: 7 }, (_, di) => {
+      const cell = week[di];
+      if (Array.isArray(cell)) return cell.length > 0 ? (cell as DayType[]) : ['REST' as DayType];
+      if (typeof cell === 'string') return [cell as DayType];
+      return ['REST' as DayType];
+    });
+  });
 }
 
 function mapAthlete(a: any): Athlete {
@@ -341,17 +357,31 @@ function AddExerciseForm({ blockId, category, onSaved, onCancel }: {
       {/* Name with dropdown + level */}
       <div style={{ display: 'flex', gap: 8 }}>
         <div style={{ flex: 1, position: 'relative' }}>
-          <input
-            placeholder="Nombre del ejercicio"
-            value={name}
-            onChange={e => { setName(e.target.value); setExerciseId(null); setShowSugg(true); }}
-            onFocus={() => setShowSugg(true)}
-            onBlur={() => setTimeout(() => setShowSugg(false), 160)}
-            style={{ ...inp, width: '100%', boxSizing: 'border-box' }}
-          />
+          <div style={{ position: 'relative' }}>
+            <input
+              placeholder="Buscar en biblioteca de ejercicios..."
+              value={name}
+              onChange={e => { setName(e.target.value); setExerciseId(null); setShowSugg(true); }}
+              onFocus={() => setShowSugg(true)}
+              onBlur={() => setTimeout(() => setShowSugg(false), 160)}
+              style={{ ...inp, width: '100%', boxSizing: 'border-box', paddingRight: 28 }}
+            />
+            <button
+              type="button"
+              onMouseDown={e => { e.preventDefault(); setShowSugg(v => !v); }}
+              style={{ position: 'absolute', right: 7, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 2, display: 'grid', placeItems: 'center' }}
+            >
+              <ChevronDown size={11}/>
+            </button>
+          </div>
           {showSugg && suggestions.length > 0 && (
-            <div style={{ position: 'absolute', top: 'calc(100% + 2px)', left: 0, right: 0, zIndex: 200, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.18)', maxHeight: 200, overflowY: 'auto' }}>
-              {suggestions.slice(0, 12).map((ex, i) => (
+            <div style={{ position: 'absolute', top: 'calc(100% + 2px)', left: 0, right: 0, zIndex: 200, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.18)', maxHeight: 220, overflowY: 'auto' }}>
+              {!name.trim() && (
+                <div style={{ padding: '5px 12px 4px', fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>
+                  Biblioteca · {suggestions.length} ejercicios
+                </div>
+              )}
+              {suggestions.slice(0, 14).map((ex, i) => (
                 <button key={ex.id} type="button"
                   onMouseDown={() => {
                     setName(ex.name);
@@ -368,6 +398,11 @@ function AddExerciseForm({ blockId, category, onSaved, onCancel }: {
                   {(ex.video_url || ex.gif_url) && <span style={{ fontSize: 10, color: 'var(--vitta-blue)', marginLeft: 6 }}>· video</span>}
                 </button>
               ))}
+              {suggestions.length > 14 && (
+                <div style={{ padding: '5px 12px', fontSize: 10, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', fontStyle: 'italic' }}>
+                  + {suggestions.length - 14} más · escribe para filtrar
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -524,32 +559,80 @@ interface DbPlanTemplate {
   id: string;
   name: string;
   description: string | null;
-  plan: DayType[][];
+  plan: any;
   exercises: Record<string, string[]>;
   is_builtin: boolean;
 }
 
 const DAY_TYPE_KEYS = Object.keys(DAY_TYPES) as DayType[];
 
-// ── Create Template Modal ─────────────────────────────────────
+const DAY_TYPE_TO_CATEGORY: Partial<Record<DayType, string>> = {
+  'EMP': 'empuje', 'TRC': 'traccion', 'ZM': 'zona_media',
+  'ARR': 'arranque', 'ENV': 'envion', 'JRK': 'jerk',
+  'PLB': 'pliometria_brazos', 'PLP': 'pliometria_piernas', 'LNZ': 'lanzamientos',
+  'AER': 'aerobicos', 'PRV': 'preventivos', 'MOV': 'movilidad', 'COR': 'coordinacion',
+};
 
-function CreateTemplateModal({ onClose, onCreated }: {
+// ── Create / Edit Template Modal ──────────────────────────────
+
+function CreateTemplateModal({ onClose, onCreated, initialTemplate }: {
   onClose: () => void;
   onCreated: (tpl: DbPlanTemplate) => void;
+  initialTemplate?: DbPlanTemplate;
 }) {
-  const [name, setName]               = useState('');
-  const [description, setDescription] = useState('');
-  const [grid, setGrid]               = useState<DayType[][]>(defaultPlan());
-  const [exercises, setExercises]     = useState<Record<string, string>>({});
+  const isEdit = !!initialTemplate;
+  const [name, setName]               = useState(initialTemplate?.name || '');
+  const [description, setDescription] = useState(initialTemplate?.description || '');
+  const [grid, setGrid]               = useState<PlanCell[][]>(
+    initialTemplate ? normalizePlan(initialTemplate.plan) : defaultPlan()
+  );
+  const [exercises, setExercises]     = useState<Record<string, string>>(
+    initialTemplate
+      ? Object.fromEntries(Object.entries(initialTemplate.exercises || {}).map(([k, v]) =>
+          [k, Array.isArray(v) ? v.join(', ') : String(v)]
+        ))
+      : {}
+  );
+  const [libExByType, setLibExByType] = useState<Record<string, LibEx[]>>({});
   const [saving, setSaving]           = useState(false);
   const [error, setError]             = useState('');
 
   const usedTypes = Array.from(new Set(
-    grid.flat().filter(d => !['REST','MOV','DELOAD','TEST'].includes(d))
-  ));
+    grid.flat(2).filter(d => !['REST','MOV','DELOAD','TEST'].includes(d))
+  )) as DayType[];
 
-  function setCell(wi: number, di: number, val: DayType) {
-    setGrid(prev => prev.map((w, i) => i === wi ? w.map((d, j) => j === di ? val : d) : w));
+  useEffect(() => {
+    if (usedTypes.length === 0) return;
+    const supabase = createClient();
+    Promise.all(usedTypes.map(type => {
+      const catId = DAY_TYPE_TO_CATEGORY[type];
+      return (catId
+        ? supabase.from('exercises').select('id, name, level, video_url, gif_url').eq('category', catId).order('name').limit(30)
+        : supabase.from('exercises').select('id, name, level, video_url, gif_url').order('name').limit(10)
+      ).then(({ data }) => [type, (data || []) as LibEx[]] as [DayType, LibEx[]]);
+    })).then(results => setLibExByType(Object.fromEntries(results)));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usedTypes.join(',')]);
+
+  function addTypeToCell(wi: number, di: number, type: DayType) {
+    if (!type) return;
+    setGrid(prev => prev.map((w, i) => i === wi
+      ? w.map((c, j) => j === di
+          ? (c.includes(type) ? c : (c[0] === 'REST' && c.length === 1 ? [type] : [...c, type]))
+          : c)
+      : w
+    ));
+  }
+
+  function removeTypeFromCell(wi: number, di: number, type: DayType) {
+    setGrid(prev => prev.map((w, i) => i === wi
+      ? w.map((c, j) => {
+          if (j !== di) return c;
+          const filtered = c.filter(t => t !== type);
+          return filtered.length > 0 ? filtered : ['REST' as DayType];
+        })
+      : w
+    ));
   }
 
   async function save() {
@@ -561,13 +644,24 @@ function CreateTemplateModal({ onClose, onCreated }: {
       if (list.length) exMap[type] = list;
     }
     const supabase = createClient();
-    const { data, error: err } = await supabase
-      .from('plan_templates')
-      .insert({ name: name.trim(), description: description.trim() || null, plan: grid, exercises: exMap, is_builtin: false })
-      .select().single();
-    setSaving(false);
-    if (err) { setError(err.message); return; }
-    onCreated(data as DbPlanTemplate);
+    if (isEdit && initialTemplate) {
+      const { data, error: err } = await supabase
+        .from('plan_templates')
+        .update({ name: name.trim(), description: description.trim() || null, plan: grid, exercises: exMap })
+        .eq('id', initialTemplate.id)
+        .select().single();
+      setSaving(false);
+      if (err) { setError(err.message); return; }
+      onCreated(data as DbPlanTemplate);
+    } else {
+      const { data, error: err } = await supabase
+        .from('plan_templates')
+        .insert({ name: name.trim(), description: description.trim() || null, plan: grid, exercises: exMap, is_builtin: false })
+        .select().single();
+      setSaving(false);
+      if (err) { setError(err.message); return; }
+      onCreated(data as DbPlanTemplate);
+    }
   }
 
   const inp: React.CSSProperties = {
@@ -579,9 +673,11 @@ function CreateTemplateModal({ onClose, onCreated }: {
   return (
     <div onClick={e => e.target === e.currentTarget && onClose()}
       style={{ position: 'fixed', inset: 0, zIndex: 1001, background: 'rgba(14,25,54,0.55)', display: 'grid', placeItems: 'center' }}>
-      <div className="card thin-scroll" style={{ width: 560, padding: 24, maxHeight: '90vh', overflowY: 'auto' }}>
+      <div className="card thin-scroll" style={{ width: 600, padding: 24, maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 18 }}>
-          <div style={{ fontSize: 15, fontWeight: 700 }}>Nueva plantilla mensual</div>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>
+            {isEdit ? 'Editar plantilla mensual' : 'Nueva plantilla mensual'}
+          </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 20 }}>×</button>
         </div>
 
@@ -596,8 +692,11 @@ function CreateTemplateModal({ onClose, onCreated }: {
           </div>
         </div>
 
-        <div style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700, marginBottom: 8 }}>
-          Estructura semanal · selecciona el tipo por día
+        <div style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700, marginBottom: 6 }}>
+          Estructura semanal · uno o más objetivos por día
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>
+          Cada celda muestra los tipos asignados. Haz clic en <b>+</b> para añadir un objetivo al día y en <b>×</b> para quitarlo.
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '24px repeat(7, 1fr)', gap: 3, marginBottom: 16 }}>
           <div/>
@@ -607,18 +706,34 @@ function CreateTemplateModal({ onClose, onCreated }: {
           {grid.map((week, wi) => (
             <>
               <div key={`lbl${wi}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: 'var(--text-muted)' }}>S{wi+1}</div>
-              {week.map((d, di) => {
-                const t = DAY_TYPES[d] || DAY_TYPES.REST;
-                return (
-                  <select key={`${wi}-${di}`} value={d} onChange={e => setCell(wi, di, e.target.value as DayType)} style={{
-                    padding: '5px 0', borderRadius: 4, border: `1px solid ${t.color}40`,
-                    background: t.bg, color: t.color, fontSize: 8, fontWeight: 700,
-                    fontFamily: 'inherit', cursor: 'pointer', textAlign: 'center', width: '100%',
-                  }}>
-                    {DAY_TYPE_KEYS.map(k => <option key={k} value={k}>{k}</option>)}
+              {week.map((cell, di) => (
+                <div key={`${wi}-${di}`} style={{
+                  display: 'flex', flexDirection: 'column', gap: 2, padding: 3,
+                  borderRadius: 5, border: '1px solid var(--border)', background: 'var(--surface-2)', minHeight: 44,
+                }}>
+                  {cell.map((type, ti) => {
+                    const t = DAY_TYPES[type] || DAY_TYPES.REST;
+                    return (
+                      <div key={`${type}-${ti}`} style={{ display: 'flex', alignItems: 'center', gap: 1, background: t.bg, border: `1px solid ${t.color}40`, borderRadius: 3, padding: '1px 3px' }}>
+                        <span style={{ fontSize: 8, fontWeight: 700, color: t.color, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{type}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeTypeFromCell(wi, di, type)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.color, padding: '0 1px', fontSize: 10, lineHeight: 1, flexShrink: 0 }}
+                        >×</button>
+                      </div>
+                    );
+                  })}
+                  <select
+                    value=""
+                    onChange={e => { if (e.target.value) addTypeToCell(wi, di, e.target.value as DayType); }}
+                    style={{ fontSize: 7, padding: '1px 0', borderRadius: 3, border: '1px dashed var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'inherit', width: '100%', marginTop: 'auto' }}
+                  >
+                    <option value="">+</option>
+                    {DAY_TYPE_KEYS.filter(k => !cell.includes(k)).map(k => <option key={k} value={k}>{k}</option>)}
                   </select>
-                );
-              })}
+                </div>
+              ))}
             </>
           ))}
         </div>
@@ -628,9 +743,10 @@ function CreateTemplateModal({ onClose, onCreated }: {
             <div style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700, marginBottom: 8 }}>
               Ejercicios predefinidos por tipo de sesión
             </div>
-            <div style={{ display: 'grid', gap: 10, marginBottom: 16 }}>
+            <div style={{ display: 'grid', gap: 12, marginBottom: 16 }}>
               {usedTypes.map(type => {
                 const t = DAY_TYPES[type] || DAY_TYPES.REST;
+                const libExs = libExByType[type] || [];
                 return (
                   <div key={type}>
                     <label style={{ ...lblStyle, color: t.color }}>{t.label} ({type})</label>
@@ -640,6 +756,31 @@ function CreateTemplateModal({ onClose, onCreated }: {
                       placeholder="Press banca, Dominadas, Press militar..."
                       style={inp}
                     />
+                    {libExs.length > 0 && (
+                      <div style={{ marginTop: 5, display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                        <span style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.04em', width: '100%' }}>
+                          BIBLIOTECA · click para añadir:
+                        </span>
+                        {libExs.slice(0, 10).map(ex => (
+                          <button
+                            key={ex.id}
+                            type="button"
+                            onClick={() => {
+                              const current = exercises[type]?.trim() || '';
+                              const list = current.split(',').map(s => s.trim()).filter(Boolean);
+                              if (!list.includes(ex.name)) {
+                                setExercises(prev => ({ ...prev, [type]: [...list, ex.name].join(', ') }));
+                              }
+                            }}
+                            style={{
+                              fontSize: 10, padding: '2px 8px', borderRadius: 5,
+                              border: `1px solid ${t.color}40`, background: t.bg, color: t.color,
+                              cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600,
+                            }}
+                          >+ {ex.name}</button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -652,7 +793,7 @@ function CreateTemplateModal({ onClose, onCreated }: {
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onClose} className="btn btn-ghost">Cancelar</button>
           <button onClick={save} disabled={saving} className="btn btn-primary">
-            <CheckIcon size={13}/>{saving ? 'Guardando...' : 'Crear plantilla'}
+            <CheckIcon size={13}/>{saving ? 'Guardando...' : (isEdit ? 'Guardar cambios' : 'Crear plantilla')}
           </button>
         </div>
       </div>
@@ -664,12 +805,13 @@ function CreateTemplateModal({ onClose, onCreated }: {
 
 function TemplatesModal({ onClose, onApply }: {
   onClose: () => void;
-  onApply: (plan: DayType[][]) => void;
+  onApply: (plan: PlanCell[][]) => void;
 }) {
   const [templates, setTemplates] = useState<DbPlanTemplate[]>([]);
   const [loading, setLoading]     = useState(true);
   const [selected, setSelected]   = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<DbPlanTemplate | null>(null);
   const [deleting, setDeleting]   = useState<string | null>(null);
 
   useEffect(() => {
@@ -697,14 +839,20 @@ function TemplatesModal({ onClose, onApply }: {
 
   const tpl = templates.find(t => t.id === selected) ?? null;
 
-  if (showCreate) {
+  if (showCreate || editingTemplate) {
     return (
       <CreateTemplateModal
-        onClose={() => setShowCreate(false)}
+        initialTemplate={editingTemplate || undefined}
+        onClose={() => { setShowCreate(false); setEditingTemplate(null); }}
         onCreated={newTpl => {
-          setTemplates(prev => [...prev, newTpl]);
+          if (editingTemplate) {
+            setTemplates(prev => prev.map(t => t.id === newTpl.id ? newTpl : t));
+          } else {
+            setTemplates(prev => [...prev, newTpl]);
+          }
           setSelected(newTpl.id);
           setShowCreate(false);
+          setEditingTemplate(null);
         }}
       />
     );
@@ -748,10 +896,16 @@ function TemplatesModal({ onClose, onApply }: {
                     {t.description && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>{t.description}</div>}
                   </button>
                   {!t.is_builtin && (
-                    <button onClick={() => deleteTemplate(t.id)} disabled={deleting === t.id} title="Eliminar plantilla"
-                      style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: '#D7474B', cursor: 'pointer', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                      <TrashIcon size={14}/>
-                    </button>
+                    <>
+                      <button onClick={() => setEditingTemplate(t)} title="Editar plantilla"
+                        style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                        <PencilIcon size={14}/>
+                      </button>
+                      <button onClick={() => deleteTemplate(t.id)} disabled={deleting === t.id} title="Eliminar plantilla"
+                        style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: '#D7474B', cursor: 'pointer', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                        <TrashIcon size={14}/>
+                      </button>
+                    </>
                   )}
                 </div>
               ))}
@@ -766,14 +920,17 @@ function TemplatesModal({ onClose, onApply }: {
                   {['L','M','X','J','V','S','D'].map(d => (
                     <div key={d} style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textAlign: 'center', padding: '2px 0' }}>{d}</div>
                   ))}
-                  {tpl.plan.map((week, wi) =>
-                    week.map((dt, di) => {
-                      const t2 = DAY_TYPES[dt] || DAY_TYPES.REST;
+                  {normalizePlan(tpl.plan).map((week, wi) =>
+                    week.map((cell, di) => {
+                      const primary = cell.find(t => t !== 'REST') || 'REST';
+                      const t2 = DAY_TYPES[primary] || DAY_TYPES.REST;
                       return (
                         <div key={`${wi}-${di}`} style={{
-                          padding: '5px 2px', borderRadius: 4, textAlign: 'center',
-                          background: t2.bg, color: t2.color, fontSize: 8, fontWeight: 700,
-                        }}>{dt}</div>
+                          padding: '4px 2px', borderRadius: 4, textAlign: 'center',
+                          background: t2.bg, color: t2.color, fontSize: 7, fontWeight: 700, lineHeight: 1.4,
+                        }}>
+                          {cell.length > 1 ? cell.join('/') : primary}
+                        </div>
                       );
                     })
                   )}
@@ -809,7 +966,7 @@ function TemplatesModal({ onClose, onApply }: {
           </button>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={onClose} className="btn btn-ghost">Cancelar</button>
-            <button onClick={() => tpl && onApply(tpl.plan)} disabled={!tpl} className="btn btn-primary">
+            <button onClick={() => tpl && onApply(normalizePlan(tpl.plan))} disabled={!tpl} className="btn btn-primary">
               <LayersIcon size={13}/>Aplicar plantilla
             </button>
           </div>
@@ -918,7 +1075,7 @@ export default function PlannerPage() {
 
   const [athlete, setAthlete] = useState<Athlete | null>(null);
   const [athleteLoading, setAthleteLoading] = useState(true);
-  const [monthPlan, setMonthPlan] = useState<DayType[][]>(defaultPlan());
+  const [monthPlan, setMonthPlan] = useState<PlanCell[][]>(defaultPlan());
   // date -> first session title (for calendar display)
   const [monthSessionMap, setMonthSessionMap] = useState<Map<string, string>>(new Map());
   const [selectedDay, setSelectedDay] = useState<{ w: number; d: number } | null>(null);
@@ -952,7 +1109,7 @@ export default function PlannerPage() {
     if (!id) return;
     const supabase = createClient();
     supabase.from('month_plans').select('plan').eq('athlete_id', id).eq('year', currentYear).eq('month', currentMonth).maybeSingle()
-      .then(({ data }) => setMonthPlan(data?.plan ?? defaultPlan()));
+      .then(({ data }) => setMonthPlan(normalizePlan(data?.plan)));
   }, [id, currentYear, currentMonth]);
 
   // ── Fetch session titles for calendar month ────────────────
@@ -1139,7 +1296,7 @@ export default function PlannerPage() {
   }
 
   // ── Save month plan ────────────────────────────────────────
-  async function savePlan(plan: DayType[][]) {
+  async function savePlan(plan: PlanCell[][]) {
     const supabase = createClient();
     await supabase.from('month_plans').upsert(
       { athlete_id: id, year: currentYear, month: currentMonth, plan },
@@ -1160,13 +1317,13 @@ export default function PlannerPage() {
       setDuplicating(false);
       return;
     }
-    const plan = data.plan as DayType[][];
+    const plan = normalizePlan(data.plan);
     await savePlan(plan);
     setMonthPlan(plan);
     setDuplicating(false);
   }
 
-  async function handleApplyTemplate(plan: DayType[][]) {
+  async function handleApplyTemplate(plan: PlanCell[][]) {
     await savePlan(plan);
     setMonthPlan(plan);
     setShowTemplateModal(false);
@@ -1305,8 +1462,10 @@ export default function PlannerPage() {
                 <div key={`s${wi}`} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 2 }}>
                   <div className="display" style={{ fontSize: 16 }}>S{wi + 1}</div>
                 </div>
-                {week.map((dayType, di) => {
-                  const t = DAY_TYPES[dayType] || DAY_TYPES.REST;
+                {week.map((cellTypes, di) => {
+                  const primaryType = cellTypes.find(t => t !== 'REST') || 'REST';
+                  const t = DAY_TYPES[primaryType] || DAY_TYPES.REST;
+                  const isAllRest = cellTypes.every(ct => ct === 'REST');
                   const isSelected = selectedDay?.w === wi && selectedDay?.d === di;
                   const date = cellDate(currentYear, currentMonth, wi, di);
                   const dateISO = toISO(date);
@@ -1316,8 +1475,8 @@ export default function PlannerPage() {
                   const sessionTitle = monthSessionMap.get(dateISO);
                   const hasSession = !!sessionTitle;
 
-                  const displayColor = hasSession ? '#2E6BD6' : (dayType === 'REST' ? 'var(--text-muted)' : t.color);
-                  const displayBg    = hasSession ? 'rgba(46,107,214,0.10)' : (dayType === 'REST' ? 'var(--surface-2)' : t.bg);
+                  const displayColor = hasSession ? '#2E6BD6' : (isAllRest ? 'var(--text-muted)' : t.color);
+                  const displayBg    = hasSession ? 'rgba(46,107,214,0.10)' : (isAllRest ? 'var(--surface-2)' : t.bg);
 
                   return (
                     <button key={`${wi}-${di}`} onClick={() => setSelectedDay({ w: wi, d: di })} style={{
@@ -1340,8 +1499,15 @@ export default function PlannerPage() {
                               {sessionTitle}
                             </div>
                           </>
-                        ) : (
+                        ) : isAllRest ? (
                           <div style={{ fontSize: 10, fontWeight: 600, color: displayColor }}>{t.label}</div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            {cellTypes.filter(type => type !== 'REST').map((type, idx) => {
+                              const tt = DAY_TYPES[type] || DAY_TYPES.REST;
+                              return <div key={idx} style={{ fontSize: 9, fontWeight: 700, color: tt.color, lineHeight: 1.2 }}>{tt.label}</div>;
+                            })}
+                          </div>
                         )}
                       </div>
                     </button>
