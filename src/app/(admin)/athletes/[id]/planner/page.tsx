@@ -803,9 +803,10 @@ function CreateTemplateModal({ onClose, onCreated, initialTemplate }: {
 
 // ── Templates Modal ───────────────────────────────────────────
 
-function TemplatesModal({ onClose, onApply }: {
+function TemplatesModal({ onClose, onApply, applying }: {
   onClose: () => void;
-  onApply: (plan: PlanCell[][]) => void;
+  onApply: (tpl: DbPlanTemplate) => void;
+  applying?: boolean;
 }) {
   const [templates, setTemplates] = useState<DbPlanTemplate[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -864,7 +865,7 @@ function TemplatesModal({ onClose, onApply }: {
       <div className="card thin-scroll" style={{ width: 560, padding: 24, maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 18 }}>
           <div style={{ fontSize: 15, fontWeight: 700 }}>Plantillas mensuales</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 20 }}>×</button>
+          <button onClick={onClose} disabled={applying} style={{ background: 'none', border: 'none', cursor: applying ? 'default' : 'pointer', color: 'var(--text-muted)', fontSize: 20, opacity: applying ? 0.4 : 1 }}>×</button>
         </div>
 
         {loading ? (
@@ -966,8 +967,8 @@ function TemplatesModal({ onClose, onApply }: {
           </button>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={onClose} className="btn btn-ghost">Cancelar</button>
-            <button onClick={() => tpl && onApply(normalizePlan(tpl.plan))} disabled={!tpl} className="btn btn-primary">
-              <LayersIcon size={13}/>Aplicar plantilla
+            <button onClick={() => tpl && !applying && onApply(tpl)} disabled={!tpl || applying} className="btn btn-primary">
+              <LayersIcon size={13}/>{applying ? 'Aplicando...' : 'Aplicar plantilla'}
             </button>
           </div>
         </div>
@@ -1091,6 +1092,7 @@ export default function PlannerPage() {
   const [collapsedBlocks, setCollapsedBlocks] = useState<Set<string>>(new Set());
   const [duplicating, setDuplicating] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [applyingTemplate, setApplyingTemplate] = useState(false);
   const [copyingSession, setCopyingSession] = useState<DbSession | null>(null);
 
   // ── Fetch athlete ──────────────────────────────────────────
@@ -1323,10 +1325,96 @@ export default function PlannerPage() {
     setDuplicating(false);
   }
 
-  async function handleApplyTemplate(plan: PlanCell[][]) {
-    await savePlan(plan);
-    setMonthPlan(plan);
-    setShowTemplateModal(false);
+  async function handleApplyTemplate(tpl: DbPlanTemplate) {
+    const plan = normalizePlan(tpl.plan);
+    setApplyingTemplate(true);
+    try {
+      await savePlan(plan);
+
+      if (Object.keys(tpl.exercises).length > 0) {
+        const supabase = createClient();
+
+        // Fetch existing session dates to avoid duplicates
+        const start = calendarStart(currentYear, currentMonth);
+        const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 27);
+        const { data: existingSessions } = await supabase
+          .from('sessions').select('date')
+          .eq('athlete_id', id)
+          .gte('date', toISO(start))
+          .lte('date', toISO(end));
+        const existingDates = new Set<string>((existingSessions || []).map((s: { date: string }) => s.date));
+
+        // Batch-fetch exercises by name
+        const allNames = Array.from(new Set(Object.values(tpl.exercises).flat()));
+        const exerciseByName = new Map<string, { id: string; level: LevelId; video_url: string | null }>();
+        if (allNames.length > 0) {
+          const { data: exData } = await supabase
+            .from('exercises').select('id, name, level, video_url')
+            .in('name', allNames);
+          for (const e of (exData || [])) exerciseByName.set(e.name, e);
+        }
+
+        const newSessionMap = new Map<string, string>();
+
+        for (let wi = 0; wi < 4; wi++) {
+          for (let di = 0; di < 7; di++) {
+            const cell = plan[wi][di];
+            const date = toISO(cellDate(currentYear, currentMonth, wi, di));
+            if (existingDates.has(date)) continue;
+
+            const typesWithEx = cell.filter(
+              t => t !== 'REST' && t !== 'DELOAD' && (tpl.exercises[t]?.length ?? 0) > 0
+            ) as DayType[];
+            if (typesWithEx.length === 0) continue;
+
+            const sessionTitle = typesWithEx.map(t => DAY_TYPES[t]?.label || t).join(' + ');
+            const { data: newSession } = await supabase
+              .from('sessions')
+              .insert({ athlete_id: id, date, title: sessionTitle, duration: 60, rpe_target: 7 })
+              .select('id').single();
+            if (!newSession) continue;
+
+            newSessionMap.set(date, sessionTitle);
+
+            let blockOrder = 0;
+            for (const type of typesWithEx) {
+              const catId = (DAY_TYPE_TO_CATEGORY[type] || 'empuje') as CategoryId;
+              const cat = CATEGORIES[catId];
+              const { data: newBlock } = await supabase
+                .from('session_blocks')
+                .insert({ session_id: newSession.id, name: DAY_TYPES[type]?.label || type, category: catId, color: cat?.color || '#2E6BD6', sort_order: blockOrder++ })
+                .select('id').single();
+              if (!newBlock) continue;
+
+              let exOrder = 0;
+              for (const exName of tpl.exercises[type]) {
+                const libEx = exerciseByName.get(exName);
+                const { data: newEx } = await supabase
+                  .from('session_exercises')
+                  .insert({ block_id: newBlock.id, exercise_id: libEx?.id ?? null, name: exName, level: libEx?.level ?? 'basico', note: null, sort_order: exOrder++, video_url: libEx?.video_url ?? null })
+                  .select('id').single();
+                if (!newEx) continue;
+                await supabase.from('sets').insert({ session_ex_id: newEx.id, reps: null, load: null, rpe_target: null, rest: '2:00', sort_order: 0, done: false });
+              }
+            }
+          }
+        }
+
+        if (newSessionMap.size > 0) {
+          setMonthSessionMap(prev => {
+            const next = new Map(prev);
+            for (const [date, title] of newSessionMap) {
+              if (!next.has(date)) next.set(date, title);
+            }
+            return next;
+          });
+        }
+      }
+    } finally {
+      setMonthPlan(plan);
+      setApplyingTemplate(false);
+      setShowTemplateModal(false);
+    }
   }
 
   async function handleDeletePlan() {
@@ -1379,7 +1467,7 @@ export default function PlannerPage() {
         />
       )}
       {showTemplateModal && (
-        <TemplatesModal onClose={() => setShowTemplateModal(false)} onApply={handleApplyTemplate} />
+        <TemplatesModal onClose={() => !applyingTemplate && setShowTemplateModal(false)} onApply={handleApplyTemplate} applying={applyingTemplate} />
       )}
       {copyingSession && (
         <CopySessionModal
