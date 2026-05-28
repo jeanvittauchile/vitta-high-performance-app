@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
-import { VittaMark, LockIcon } from '@/components/icons';
+import { LockIcon } from '@/components/icons';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -34,8 +34,7 @@ export default function LoginPage() {
     }}>
       <div style={{ width: '100%', maxWidth: 380 }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <VittaMark size={52} bg="var(--vitta-cream)" fg="var(--vitta-navy-deep)"/>
-          <div className="display" style={{ fontSize: 32, fontStyle: 'italic', color: 'var(--vitta-cream)', marginTop: 14, letterSpacing: '-0.03em' }}>
+          <div className="display" style={{ fontSize: 32, fontStyle: 'italic', color: 'var(--vitta-cream)', letterSpacing: '-0.03em' }}>
             VITTA
           </div>
           <div style={{ fontSize: 10, letterSpacing: '0.18em', color: 'rgba(244,239,224,0.55)', marginTop: 4, fontWeight: 700 }}>
