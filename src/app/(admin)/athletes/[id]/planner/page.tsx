@@ -1,9 +1,10 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase';
 import { CATEGORIES, DAY_TYPES } from '@/lib/constants';
-import { getCategoryIcon, PlusIcon, CopyIcon, LayersIcon, ChevronLeft, ChevronRight, ChevronDown, SparkleIcon, TrashIcon, PencilIcon, CheckIcon, XIcon } from '@/components/icons';
+import { getCategoryIcon, PlusIcon, CopyIcon, LayersIcon, ChevronLeft, ChevronRight, ChevronDown, SparkleIcon, TrashIcon, PencilIcon, CheckIcon, XIcon, TrendIcon } from '@/components/icons';
 import LevelBadge from '@/components/badges/LevelBadge';
 import type { Athlete, DayType, CategoryId, LevelId } from '@/lib/types';
 
@@ -1509,6 +1510,9 @@ export default function PlannerPage() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
+            <Link href={`/athletes/${id}/progress`} className="btn btn-ghost" style={{ textDecoration: 'none' }}>
+              <TrendIcon size={13}/>Progreso
+            </Link>
             <button className="btn btn-ghost" onClick={handleDuplicatePrevMonth} disabled={duplicating}>
               <CopyIcon size={13}/>{duplicating ? 'Copiando...' : 'Duplicar mes anterior'}
             </button>

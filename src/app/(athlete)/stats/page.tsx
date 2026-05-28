@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase';
 import { useAthlete } from '@/lib/athlete-context';
 import { CATEGORIES } from '@/lib/constants';
-import { getCategoryIcon, FlameIcon } from '@/components/icons';
+import { getCategoryIcon, FlameIcon, TrendIcon } from '@/components/icons';
+import { computeExerciseBests, type BestEntry } from '@/lib/exercise-bests';
 
 interface StatsData {
   adherence: number | null;
@@ -21,11 +22,20 @@ function daysAgoISO(n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+const RANK_COLORS = ['#F5A623', '#9098AE', '#CD7F32'];
+
+function fmtLoad(v: number): string {
+  return v % 1 === 0 ? String(v) : v.toFixed(1);
+}
+
 export default function StatsPage() {
   const { athleteId, loading: authLoading } = useAthlete();
   const [stats, setStats] = useState<StatsData | null>(null);
+  const [bests, setBests] = useState<BestEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [bestsLoading, setBestsLoading] = useState(true);
 
+  // ── Stats (28d) ────────────────────────────────────────────
   useEffect(() => {
     if (authLoading || !athleteId) return;
 
@@ -56,7 +66,6 @@ export default function StatsPage() {
           return;
         }
 
-        // ── Adherence ──────────────────────────────────────
         const totalSessions = sessions.length;
         const doneSessions = sessions.filter((s: any) =>
           s.session_blocks?.some((b: any) =>
@@ -67,7 +76,6 @@ export default function StatsPage() {
         ).length;
         const adherence = totalSessions > 0 ? Math.round(doneSessions / totalSessions * 100) : null;
 
-        // ── RPE average (last 7 days) ──────────────────────
         const sevenDaysAgo = daysAgoISO(7);
         const rpeValues: number[] = [];
         sessions.forEach((s: any) => {
@@ -85,7 +93,6 @@ export default function StatsPage() {
           ? Math.round((rpeValues.reduce((a, b) => a + b, 0) / rpeValues.length) * 10) / 10
           : null;
 
-        // ── Volume by category ─────────────────────────────
         const catCounts: Record<string, number> = {};
         sessions.forEach((s: any) => {
           s.session_blocks?.forEach((b: any) => {
@@ -97,7 +104,6 @@ export default function StatsPage() {
           .sort(([, a], [, b]) => b - a)
           .map(([id, count]) => ({ id, count, pct: totalBlocks > 0 ? Math.round(count / totalBlocks * 100) : 0 }));
 
-        // ── Streak (consecutive days with done sessions) ───
         let streak = 0;
         const sessionDates = new Set(
           sessions
@@ -118,7 +124,6 @@ export default function StatsPage() {
           checkDate.setDate(checkDate.getDate() - 1);
         }
 
-        // ── Last 21 days activity bar ──────────────────────
         const last21: boolean[] = [];
         for (let i = 20; i >= 0; i--) {
           const iso = daysAgoISO(i);
@@ -127,6 +132,27 @@ export default function StatsPage() {
 
         setStats({ adherence, avgRpe, totalSessions, doneSessions, streak, catVolume, last21 });
         setLoading(false);
+      });
+  }, [athleteId, authLoading]);
+
+  // ── Bests (all-time) ───────────────────────────────────────
+  useEffect(() => {
+    if (authLoading || !athleteId) return;
+    const supabase = createClient();
+    supabase
+      .from('sessions')
+      .select(`
+        session_blocks (
+          session_exercises (
+            name,
+            sets ( done, actual_reps, actual_load )
+          )
+        )
+      `)
+      .eq('athlete_id', athleteId)
+      .then(({ data }) => {
+        setBests(computeExerciseBests(data ?? []));
+        setBestsLoading(false);
       });
   }, [athleteId, authLoading]);
 
@@ -203,6 +229,73 @@ export default function StatsPage() {
                     <div style={{ width: `${Math.min(cv.pct * 2, 100)}%`, height: '100%', background: c.color }}/>
                   </div>
                   <div className="mono tnum" style={{ fontSize: 11, color: 'var(--d-text-muted)', textAlign: 'right' }}>{cv.pct}%</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Exercise bests ranking */}
+      <div style={{ marginTop: 14, background: 'var(--d-surface)', border: '1px solid var(--d-border)', borderRadius: 16, padding: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+          <TrendIcon size={16} stroke="var(--vitta-blue-bright)"/>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--d-text)' }}>Mejores series · Ranking</div>
+            <div style={{ fontSize: 10, color: 'var(--d-text-faint)', marginTop: 1 }}>1RM estimado · Fórmula de Brzycki</div>
+          </div>
+        </div>
+
+        {bestsLoading ? (
+          <div style={{ fontSize: 12, color: 'var(--d-text-faint)', textAlign: 'center', padding: '12px 0' }}>Calculando...</div>
+        ) : bests.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--d-text-faint)', textAlign: 'center', padding: '12px 0' }}>
+            Sin series registradas aún. Completa tus cargas reales en los entrenamientos.
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gap: 8 }}>
+            {bests.map((entry, i) => {
+              const rankColor = RANK_COLORS[i] ?? 'var(--d-text-faint)';
+              return (
+                <div key={entry.name} style={{
+                  background: i < 3 ? `${rankColor}12` : 'rgba(255,255,255,0.02)',
+                  border: `1px solid ${i < 3 ? `${rankColor}30` : 'var(--d-border)'}`,
+                  borderRadius: 12, padding: '10px 12px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <div style={{
+                      width: 22, height: 22, borderRadius: 11,
+                      background: i < 3 ? rankColor : 'var(--d-border)',
+                      color: i < 3 ? '#fff' : 'var(--d-text-muted)',
+                      display: 'grid', placeItems: 'center',
+                      fontSize: 10, fontWeight: 800, flexShrink: 0,
+                    }}>
+                      {i + 1}
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--d-text)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {entry.name}
+                    </div>
+                    <div className="mono" style={{ fontSize: 13, fontWeight: 700, color: rankColor, flexShrink: 0 }}>
+                      {entry.reps} × {fmtLoad(entry.load)} kg
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
+                    {[
+                      { label: '1 RM', value: entry.rm1 },
+                      { label: '3 RM', value: entry.rm3 },
+                      { label: '6 RM', value: entry.rm6 },
+                    ].map(rm => (
+                      <div key={rm.label} style={{
+                        background: 'rgba(255,255,255,0.04)', borderRadius: 8,
+                        padding: '5px 8px', textAlign: 'center',
+                      }}>
+                        <div style={{ fontSize: 9, color: 'var(--d-text-faint)', letterSpacing: '0.08em', fontWeight: 700 }}>{rm.label}</div>
+                        <div className="mono tnum" style={{ fontSize: 14, fontWeight: 700, color: 'var(--d-text)', marginTop: 2 }}>
+                          {fmtLoad(rm.value)} <span style={{ fontSize: 9, color: 'var(--d-text-muted)', fontWeight: 500 }}>kg</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               );
             })}
