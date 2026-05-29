@@ -1,9 +1,9 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
-import Link from 'next/link';
 import { createClient } from '@/lib/supabase';
 import { CATEGORIES, DAY_TYPES } from '@/lib/constants';
+import { computeExerciseBests, type BestEntry } from '@/lib/exercise-bests';
 import { getCategoryIcon, PlusIcon, CopyIcon, LayersIcon, ChevronLeft, ChevronRight, ChevronDown, SparkleIcon, TrashIcon, PencilIcon, CheckIcon, XIcon, TrendIcon } from '@/components/icons';
 import LevelBadge from '@/components/badges/LevelBadge';
 import type { Athlete, DayType, CategoryId, LevelId } from '@/lib/types';
@@ -106,6 +106,12 @@ function mapAthlete(a: any): Athlete {
 }
 
 const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+const RANK_COLORS = ['#F5A623', '#9098AE', '#CD7F32'];
+
+function fmtLoad(v: number): string {
+  return v % 1 === 0 ? String(v) : v.toFixed(1);
+}
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', borderRadius: 8,
@@ -1077,6 +1083,8 @@ export default function PlannerPage() {
 
   const [athlete, setAthlete] = useState<Athlete | null>(null);
   const [athleteLoading, setAthleteLoading] = useState(true);
+  const [bests, setBests] = useState<BestEntry[]>([]);
+  const [bestsLoading, setBestsLoading] = useState(true);
   const [monthPlan, setMonthPlan] = useState<PlanCell[][]>(defaultPlan());
   // date -> first session title (for calendar display)
   const [monthSessionMap, setMonthSessionMap] = useState<Map<string, string>>(new Map());
@@ -1105,6 +1113,21 @@ export default function PlannerPage() {
       if (data) setAthlete(mapAthlete(data));
       setAthleteLoading(false);
     });
+  }, [id]);
+
+  // ── Fetch exercise bests for progress panel ────────────────
+  useEffect(() => {
+    if (!id) return;
+    setBestsLoading(true);
+    const supabase = createClient();
+    supabase
+      .from('sessions')
+      .select(`session_blocks ( session_exercises ( name, sets ( done, actual_reps, actual_load ) ) )`)
+      .eq('athlete_id', id)
+      .then(({ data }) => {
+        setBests(computeExerciseBests(data ?? []));
+        setBestsLoading(false);
+      });
   }, [id]);
 
   // ── Fetch month plan ───────────────────────────────────────
@@ -1442,7 +1465,6 @@ export default function PlannerPage() {
 
   // ── Derived values ─────────────────────────────────────────
   const focusCat = CATEGORIES[athlete?.focus || 'empuje'] || CATEGORIES.empuje;
-  const FocusIcon = getCategoryIcon(athlete?.focus || 'empuje');
   const todayISO = toISO(now);
 
   const selectedDate = selectedDay
@@ -1510,9 +1532,6 @@ export default function PlannerPage() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <Link href={`/athletes/${id}/progress`} className="btn btn-ghost" style={{ textDecoration: 'none' }}>
-              <TrendIcon size={13}/>Progreso
-            </Link>
             <button className="btn btn-ghost" onClick={handleDuplicatePrevMonth} disabled={duplicating}>
               <CopyIcon size={13}/>{duplicating ? 'Copiando...' : 'Duplicar mes anterior'}
             </button>
@@ -1909,15 +1928,65 @@ export default function PlannerPage() {
 
       {/* ─── Suggestion panel ───────────────────────────────── */}
       <div style={{ background: 'var(--surface)', borderLeft: '1px solid var(--border)', padding: '20px 18px', overflow: 'auto' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: `${focusCat.color}1f`, color: focusCat.color, display: 'grid', placeItems: 'center' }}>
-            <FocusIcon size={18} stroke="currentColor"/>
-          </div>
+        {/* Progress: exercise bests */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <TrendIcon size={16} stroke="var(--vitta-blue-bright)"/>
           <div>
-            <div style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700 }}>Foco principal</div>
-            <div style={{ fontSize: 14, fontWeight: 700 }}>{athlete.focus || focusCat.label}</div>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>Mejores series · Ranking</div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>1RM estimado · Brzycki</div>
           </div>
         </div>
+        {bestsLoading ? (
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '12px 0', textAlign: 'center' }}>Calculando...</div>
+        ) : bests.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '12px 0', textAlign: 'center' }}>Sin series completadas aún</div>
+        ) : (
+          <div style={{ display: 'grid', gap: 6, marginBottom: 14 }}>
+            {bests.slice(0, 5).map((entry, i) => {
+              const rankColor = RANK_COLORS[i] ?? 'rgba(255,255,255,0.35)';
+              return (
+                <div key={entry.name} style={{
+                  background: i < 3 ? `${rankColor}14` : 'rgba(255,255,255,0.03)',
+                  border: `1px solid ${i < 3 ? `${rankColor}35` : 'rgba(255,255,255,0.08)'}`,
+                  borderRadius: 10, padding: '10px 12px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <div style={{
+                      width: 22, height: 22, borderRadius: 11, flexShrink: 0,
+                      background: i < 3 ? rankColor : 'rgba(255,255,255,0.12)',
+                      color: i < 3 ? '#0E1936' : 'rgba(255,255,255,0.5)',
+                      display: 'grid', placeItems: 'center',
+                      fontSize: 10, fontWeight: 800,
+                    }}>{i + 1}</div>
+                    <div style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {entry.name}
+                    </div>
+                    <div className="mono" style={{ fontSize: 12, fontWeight: 800, color: rankColor, flexShrink: 0 }}>
+                      {entry.reps}×{fmtLoad(entry.load)}kg
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
+                    {[
+                      { label: '1RM', value: entry.rm1, accent: true },
+                      { label: '3RM', value: entry.rm3, accent: false },
+                      { label: '6RM', value: entry.rm6, accent: false },
+                    ].map(rm => (
+                      <div key={rm.label} style={{
+                        background: rm.accent ? 'rgba(46,107,214,0.18)' : 'rgba(255,255,255,0.05)',
+                        border: `1px solid ${rm.accent ? 'rgba(46,107,214,0.35)' : 'rgba(255,255,255,0.08)'}`,
+                        borderRadius: 7, padding: '5px 6px', textAlign: 'center',
+                      }}>
+                        <div style={{ fontSize: 8, color: rm.accent ? 'rgba(74,138,240,0.9)' : 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase' }}>{rm.label}</div>
+                        <div className="mono tnum" style={{ fontSize: 13, fontWeight: 800, color: rm.accent ? '#4A8AF0' : 'var(--text)', marginTop: 2 }}>{fmtLoad(rm.value)}</div>
+                        <div style={{ fontSize: 8, color: 'var(--text-muted)' }}>kg</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         <div className="card" style={{ padding: 12, marginBottom: 12, background: 'var(--surface-2)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
