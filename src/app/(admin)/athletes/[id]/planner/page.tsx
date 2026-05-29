@@ -1090,6 +1090,7 @@ export default function PlannerPage() {
   const [pillEx, setPillEx] = useState<{ name: string; level: string } | null>(null);
   const [pillSession, setPillSession] = useState<string | null>(null);
   const [pillAdding, setPillAdding] = useState(false);
+  const [dragOverBlock, setDragOverBlock] = useState<string | null>(null);
   const [monthPlan, setMonthPlan] = useState<PlanCell[][]>(defaultPlan());
   // date -> first session title (for calendar display)
   const [monthSessionMap, setMonthSessionMap] = useState<Map<string, string>>(new Map());
@@ -1321,6 +1322,25 @@ export default function PlannerPage() {
     setPillAdding(false);
     setPillEx(null);
     setPillSession(null);
+  }
+
+  // ── Add exercise by drag-drop ──────────────────────────────
+  async function addExerciseByDrop(blockId: string, name: string, level: string) {
+    const supabase = createClient();
+    const { data: existing } = await supabase.from('session_exercises')
+      .select('sort_order').eq('block_id', blockId).order('sort_order', { ascending: false }).limit(1);
+    const nextSort = ((existing?.[0]?.sort_order ?? -1) as number) + 1;
+    const { data: exData } = await supabase.from('session_exercises')
+      .insert({ block_id: blockId, name, level, sort_order: nextSort })
+      .select('id').single();
+    if (exData) {
+      await supabase.from('sets').insert([
+        { session_ex_id: exData.id, reps: '5', done: false, sort_order: 0 },
+        { session_ex_id: exData.id, reps: '5', done: false, sort_order: 1 },
+        { session_ex_id: exData.id, reps: '5', done: false, sort_order: 2 },
+      ]);
+      await fetchDaySessions();
+    }
   }
 
   // ── Update set field ───────────────────────────────────────
@@ -1813,12 +1833,23 @@ export default function PlannerPage() {
                       const isDone = doneBlocks.has(block.id);
                       const isCollapsed = isDone || collapsedBlocks.has(block.id);
                       return (
-                        <div key={block.id} style={{
-                          background: isDone ? 'rgba(43,182,115,0.06)' : 'var(--surface-2)',
-                          borderRadius: 10,
-                          border: `1px solid ${isDone ? 'rgba(43,182,115,0.3)' : 'var(--border)'}`,
-                          overflow: 'hidden',
-                        }}>
+                        <div key={block.id}
+                          onDragOver={e => { e.preventDefault(); setDragOverBlock(block.id); }}
+                          onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverBlock(null); }}
+                          onDrop={e => {
+                            e.preventDefault();
+                            setDragOverBlock(null);
+                            const name = e.dataTransfer.getData('ex/name');
+                            const level = e.dataTransfer.getData('ex/level');
+                            if (name) addExerciseByDrop(block.id, name, level);
+                          }}
+                          style={{
+                            background: dragOverBlock === block.id ? `${blockColor}18` : isDone ? 'rgba(43,182,115,0.06)' : 'var(--surface-2)',
+                            borderRadius: 10,
+                            border: `2px solid ${dragOverBlock === block.id ? blockColor : isDone ? 'rgba(43,182,115,0.3)' : 'var(--border)'}`,
+                            overflow: 'hidden',
+                            transition: 'border-color 0.12s, background 0.12s',
+                          }}>
                           {/* Block header */}
                           <div style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
                             {editBlockId === block.id ? (
@@ -2124,13 +2155,19 @@ export default function PlannerPage() {
                       {suggestions.length === 0 ? (
                         <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '4px 2px' }}>Sin ejercicios en esta categoría</div>
                       ) : suggestions.map(ex => (
-                        <button key={ex.id}
+                        <div key={ex.id}
+                          draggable
+                          onDragStart={e => {
+                            e.dataTransfer.setData('ex/name', ex.name);
+                            e.dataTransfer.setData('ex/level', ex.level);
+                            e.dataTransfer.effectAllowed = 'copy';
+                          }}
                           onClick={() => { setPillEx({ name: ex.name, level: ex.level }); setPillSession(null); }}
-                          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 20, background: `${cat.color}18`, border: `1px solid ${cat.color}40`, cursor: 'pointer', width: '100%', textAlign: 'left' }}>
+                          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 20, background: `${cat.color}18`, border: `1px solid ${cat.color}40`, cursor: 'grab', userSelect: 'none' }}>
                           <span style={{ flex: 1, fontSize: 11, fontWeight: 600, color: cat.color, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ex.name}</span>
                           <span style={{ fontSize: 9, color: 'var(--text-muted)', flexShrink: 0 }}>{ex.level}</span>
                           <PlusIcon size={10} stroke={cat.color}/>
-                        </button>
+                        </div>
                       ))}
                     </div>
                   )}
