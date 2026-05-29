@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { CATEGORIES, DAY_TYPES } from '@/lib/constants';
@@ -1085,6 +1085,8 @@ export default function PlannerPage() {
   const [athleteLoading, setAthleteLoading] = useState(true);
   const [bests, setBests] = useState<BestEntry[]>([]);
   const [bestsLoading, setBestsLoading] = useState(true);
+  const [libExercises, setLibExercises] = useState<{ id: string; name: string; category: string; level: string }[]>([]);
+  const [openCats, setOpenCats] = useState<Set<string>>(new Set());
   const [monthPlan, setMonthPlan] = useState<PlanCell[][]>(defaultPlan());
   // date -> first session title (for calendar display)
   const [monthSessionMap, setMonthSessionMap] = useState<Map<string, string>>(new Map());
@@ -1129,6 +1131,14 @@ export default function PlannerPage() {
         setBestsLoading(false);
       });
   }, [id]);
+
+  // ── Fetch library exercises for category suggestions ──────
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.from('exercises').select('id, name, category, level').then(({ data }) => {
+      if (data) setLibExercises(data);
+    });
+  }, []);
 
   // ── Fetch month plan ───────────────────────────────────────
   useEffect(() => {
@@ -1465,6 +1475,16 @@ export default function PlannerPage() {
 
   // ── Derived values ─────────────────────────────────────────
   const focusCat = CATEGORIES[athlete?.focus || 'empuje'] || CATEGORIES.empuje;
+
+  const suggestionsByCat = useMemo(() => {
+    const map: Record<string, { id: string; name: string; level: string }[]> = {};
+    for (const catId of Object.keys(CATEGORIES)) {
+      const pool = libExercises.filter(e => e.category === catId);
+      const shuffled = [...pool].sort(() => Math.random() - 0.5);
+      map[catId] = shuffled.slice(0, 4);
+    }
+    return map;
+  }, [libExercises]);
   const todayISO = toISO(now);
 
   const selectedDate = selectedDay
@@ -1987,6 +2007,56 @@ export default function PlannerPage() {
             })}
           </div>
         )}
+
+        {/* Category exercise suggestions */}
+        <div style={{ marginTop: 20 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>
+            Biblioteca · Sugerencias
+          </div>
+          <div style={{ display: 'grid', gap: 4 }}>
+            {Object.values(CATEGORIES).map(cat => {
+              const CatIcon = getCategoryIcon(cat.id);
+              const isOpen = openCats.has(cat.id);
+              const suggestions = suggestionsByCat[cat.id] ?? [];
+              return (
+                <div key={cat.id} style={{ borderRadius: 9, border: '1px solid var(--border)', overflow: 'hidden' }}>
+                  <button
+                    onClick={() => setOpenCats(prev => {
+                      const next = new Set(prev);
+                      isOpen ? next.delete(cat.id) : next.add(cat.id);
+                      return next;
+                    })}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '7px 10px', background: isOpen ? `${cat.color}18` : 'var(--surface-2)',
+                      border: 'none', cursor: 'pointer', textAlign: 'left',
+                    }}
+                  >
+                    <div style={{ width: 22, height: 22, borderRadius: 6, background: `${cat.color}22`, color: cat.color, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                      <CatIcon size={13} stroke="currentColor"/>
+                    </div>
+                    <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{cat.label}</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: cat.color, letterSpacing: '0.06em' }}>{cat.short}</span>
+                    <ChevronDown size={11} style={{ color: 'var(--text-muted)', transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}/>
+                  </button>
+                  {isOpen && (
+                    <div style={{ padding: '6px 8px 8px', background: 'var(--surface)', display: 'grid', gap: 4 }}>
+                      {suggestions.length === 0 ? (
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '4px 2px' }}>Sin ejercicios en esta categoría</div>
+                      ) : suggestions.map(ex => (
+                        <div key={ex.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 6, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                          <div style={{ width: 6, height: 6, borderRadius: 3, background: cat.color, flexShrink: 0 }}/>
+                          <span style={{ flex: 1, fontSize: 11, fontWeight: 500, color: 'var(--text)' }}>{ex.name}</span>
+                          <span style={{ fontSize: 9, color: 'var(--text-muted)', flexShrink: 0 }}>{ex.level}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
       </div>
     </div>
