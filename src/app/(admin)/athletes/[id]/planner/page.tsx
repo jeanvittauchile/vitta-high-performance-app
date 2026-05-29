@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { CATEGORIES, DAY_TYPES } from '@/lib/constants';
 import { computeExerciseBests, type BestEntry } from '@/lib/exercise-bests';
-import { getCategoryIcon, PlusIcon, CopyIcon, LayersIcon, ChevronLeft, ChevronRight, ChevronDown, SparkleIcon, TrashIcon, PencilIcon, CheckIcon, XIcon, TrendIcon } from '@/components/icons';
+import { getCategoryIcon, PlusIcon, CopyIcon, LayersIcon, ChevronLeft, ChevronRight, ChevronDown, TrashIcon, PencilIcon, CheckIcon, XIcon, TrendIcon } from '@/components/icons';
 import LevelBadge from '@/components/badges/LevelBadge';
 import type { Athlete, DayType, CategoryId, LevelId } from '@/lib/types';
 
@@ -1988,44 +1988,6 @@ export default function PlannerPage() {
           </div>
         )}
 
-        <div className="card" style={{ padding: 12, marginBottom: 12, background: 'var(--surface-2)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-            <SparkleIcon size={13} stroke="var(--vitta-blue)"/>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--vitta-blue)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Sugerencias del coach IA</div>
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.45 }}>
-            Para <b>{athlete.name.split(' ')[0]}</b> este mes, prioriza ejercicios de <b>{focusCat.label}</b> en intensidad media-alta (RPE 7-8). Mantén volumen de movilidad y preventivos diariamente.
-          </div>
-        </div>
-
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>
-          Estadísticas del mes
-        </div>
-        <div style={{ display: 'grid', gap: 8 }}>
-          {[
-            { label: 'Adherencia', value: `${athlete.adherence}%` },
-            { label: 'RPE medio',  value: String(athlete.rpe7) },
-            { label: 'Estado',     value: athlete.status },
-          ].map(s => (
-            <div key={s.label} style={{ padding: '8px 10px', borderRadius: 8, background: 'white', border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)' }}>{s.label}</span>
-              <span style={{ fontSize: 12, fontWeight: 700 }}>{s.value}</span>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', margin: '16px 0 8px' }}>
-          Tipos de sesión
-        </div>
-        <div style={{ display: 'grid', gap: 5 }}>
-          {Object.entries(DAY_TYPES).filter(([k]) => !['REST','DELOAD','TEST'].includes(k)).slice(0, 6).map(([key, t]) => (
-            <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 7, background: t.bg, border: `1px solid ${t.color}28` }}>
-              <div style={{ width: 8, height: 8, borderRadius: 4, background: t.color }}/>
-              <span style={{ fontSize: 11, fontWeight: 600, color: t.color }}>{t.label}</span>
-              <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 'auto' }}>{key}</span>
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   );
