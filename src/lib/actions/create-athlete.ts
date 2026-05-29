@@ -16,7 +16,6 @@ export interface CreateAthleteInput {
   password: string;
   name: string;
   initials: string;
-  birthDate: string;
   age: number;
   weeklyHours: number;
   focus: string;
@@ -43,7 +42,6 @@ export async function createAthlete(input: CreateAthleteInput) {
       user_id:      userId,
       name:         input.name,
       initials:     input.initials,
-      birth_date:   input.birthDate,
       age:          input.age,
       weekly_hours: input.weeklyHours,
       focus:        input.focus,

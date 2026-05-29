@@ -33,7 +33,7 @@ export default function NewAthleteModal({ onClose, onCreated }: Props) {
     name:        '',
     email:       '',
     password:    '',
-    birthDate:   '',
+    age:         '',
     weeklyHours: '5',
     focus:       '',
   });
@@ -51,21 +51,9 @@ export default function NewAthleteModal({ onClose, onCreated }: Props) {
 
   const color = FOCUS_COLORS[form.focus] || '#2E6BD6';
 
-  function calcAge(birthDate: string): number | null {
-    if (!birthDate) return null;
-    const birth = new Date(birthDate);
-    const today = new Date();
-    let age = today.getFullYear() - birth.getFullYear();
-    const m = today.getMonth() - birth.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-    return age;
-  }
-
-  const age = calcAge(form.birthDate);
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.name || !form.email || !form.password || !form.birthDate) {
+    if (!form.name || !form.email || !form.password || !form.age) {
       setError('Completa todos los campos obligatorios.');
       return;
     }
@@ -76,8 +64,7 @@ export default function NewAthleteModal({ onClose, onCreated }: Props) {
       name:        form.name,
       email:       form.email,
       password:    form.password,
-      birthDate:   form.birthDate,
-      age:         age ?? 0,
+      age:         Number(form.age),
       weeklyHours: Number(form.weeklyHours),
       focus:       form.focus,
       initials,
@@ -147,7 +134,7 @@ export default function NewAthleteModal({ onClose, onCreated }: Props) {
           <div>
             <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{form.name || 'Nombre del atleta'}</div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-              {form.focus || '—'} · {age !== null ? `${age} años` : '—'}
+              {form.focus || '—'} · {form.age ? `${form.age} años` : '—'}
             </div>
           </div>
         </div>
@@ -169,12 +156,9 @@ export default function NewAthleteModal({ onClose, onCreated }: Props) {
           </Field>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            {/* Fecha de nacimiento */}
-            <Field label="Fecha de nacimiento *">
-              <input type="date" value={form.birthDate} onChange={set('birthDate')} required
-                max={new Date(new Date().setFullYear(new Date().getFullYear() - 10)).toISOString().split('T')[0]}
-                min={new Date(new Date().setFullYear(new Date().getFullYear() - 80)).toISOString().split('T')[0]}
-              />
+            {/* Edad */}
+            <Field label="Edad *">
+              <input type="number" value={form.age} onChange={set('age')} placeholder="25" min={10} max={80} required/>
             </Field>
 
             {/* Horas semanales */}
