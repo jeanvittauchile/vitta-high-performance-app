@@ -558,6 +558,137 @@ function EditBlockForm({ block, onSaved, onCancel }: {
   );
 }
 
+// ─── Copy Plan to Another Athlete Modal ─────────────────────
+
+function CopyPlanToAthleteModal({ currentAthleteId, year, month, plan, onClose }: {
+  currentAthleteId: string;
+  year: number;
+  month: number;
+  plan: PlanCell[][];
+  onClose: () => void;
+}) {
+  const [athletes, setAthletes] = useState<{ id: string; name: string; initials: string; color: string }[]>([]);
+  const [targetId, setTargetId]     = useState<string | null>(null);
+  const [withSessions, setWithSessions] = useState(false);
+  const [copying, setCopying]       = useState(false);
+  const [error, setError]           = useState('');
+  const [done, setDone]             = useState(false);
+
+  useEffect(() => {
+    createClient().from('athletes').select('id, name, initials, color').neq('id', currentAthleteId).order('name')
+      .then(({ data }) => setAthletes(data || []));
+  }, [currentAthleteId]);
+
+  async function handleCopy() {
+    if (!targetId) return;
+    setCopying(true); setError('');
+    const supabase = createClient();
+
+    const { error: planErr } = await supabase.from('month_plans').upsert(
+      { athlete_id: targetId, year, month, plan },
+      { onConflict: 'athlete_id,year,month' }
+    );
+    if (planErr) { setError(planErr.message); setCopying(false); return; }
+
+    if (withSessions) {
+      const start = calendarStart(year, month);
+      const end   = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 27);
+      const { data: sessions } = await supabase
+        .from('sessions')
+        .select(`id, title, duration, rpe_target, date, session_blocks ( id, name, category, color, sort_order, session_exercises ( id, exercise_id, name, level, note, sort_order, video_url, sets ( id, reps, load, rpe_target, rest, sort_order ) ) )`)
+        .eq('athlete_id', currentAthleteId)
+        .gte('date', toISO(start)).lte('date', toISO(end));
+
+      for (const s of (sessions || []) as any[]) {
+        const { data: ns } = await supabase.from('sessions')
+          .insert({ athlete_id: targetId, date: s.date, title: s.title, duration: s.duration, rpe_target: s.rpe_target })
+          .select('id').single();
+        if (!ns) continue;
+        const blocks = [...(s.session_blocks || [])].sort((a: any, b: any) => a.sort_order - b.sort_order);
+        for (const bl of blocks) {
+          const { data: nb } = await supabase.from('session_blocks')
+            .insert({ session_id: ns.id, name: bl.name, category: bl.category, color: bl.color, sort_order: bl.sort_order })
+            .select('id').single();
+          if (!nb) continue;
+          const exs = [...(bl.session_exercises || [])].sort((a: any, b: any) => a.sort_order - b.sort_order);
+          for (const ex of exs) {
+            const { data: ne } = await supabase.from('session_exercises')
+              .insert({ block_id: nb.id, exercise_id: ex.exercise_id, name: ex.name, level: ex.level, note: ex.note, sort_order: ex.sort_order, video_url: ex.video_url })
+              .select('id').single();
+            if (!ne) continue;
+            const sets = [...(ex.sets || [])].sort((a: any, b: any) => a.sort_order - b.sort_order);
+            if (sets.length > 0) {
+              await supabase.from('sets').insert(
+                sets.map((st: any) => ({ session_ex_id: ne.id, reps: st.reps, load: st.load, rpe_target: st.rpe_target, rest: st.rest, sort_order: st.sort_order, done: false }))
+              );
+            }
+          }
+        }
+      }
+    }
+
+    setCopying(false); setDone(true);
+  }
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(14,25,54,0.55)', display: 'grid', placeItems: 'center' }}>
+      <div className="card" style={{ width: 480, padding: 24 }}>
+        {done ? (
+          <>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Plan copiado correctamente</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>
+              {MONTH_NAMES[month - 1]} {year} fue pegado en el atleta destino.
+            </div>
+            <button onClick={onClose} className="btn btn-primary">Cerrar</button>
+          </>
+        ) : (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700 }}>Copiar plan a otro atleta</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>{MONTH_NAMES[month - 1]} {year} · selecciona el atleta destino</div>
+              </div>
+              <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 20, lineHeight: 1 }}>×</button>
+            </div>
+
+            <div className="thin-scroll" style={{ display: 'grid', gap: 5, maxHeight: 260, overflowY: 'auto', marginBottom: 14 }}>
+              {athletes.length === 0 ? (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '12px 0' }}>No hay otros atletas registrados.</div>
+              ) : athletes.map(a => (
+                <button key={a.id} onClick={() => setTargetId(a.id)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 12px', borderRadius: 8, border: `2px solid ${targetId === a.id ? '#2E6BD6' : 'var(--border)'}`, background: targetId === a.id ? 'rgba(46,107,214,0.08)' : 'var(--surface-2)', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', width: '100%' }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 16, background: a.color || '#2E6BD6', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                    {a.initials}
+                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{a.name}</span>
+                  {targetId === a.id && <CheckIcon size={14} stroke="#2E6BD6" strokeWidth={2.5}/>}
+                </button>
+              ))}
+            </div>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', marginBottom: 16, padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+              <input type="checkbox" checked={withSessions} onChange={e => setWithSessions(e.target.checked)} style={{ width: 14, height: 14 }}/>
+              <div>
+                <div style={{ fontWeight: 600 }}>Incluir sesiones y ejercicios</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Copia bloques, ejercicios y series (cargas incluidas)</div>
+              </div>
+            </label>
+
+            {error && <div style={{ fontSize: 12, color: '#D7474B', padding: '7px 10px', background: 'rgba(215,71,75,0.08)', borderRadius: 6, marginBottom: 12 }}>{error}</div>}
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={onClose} className="btn btn-ghost">Cancelar</button>
+              <button onClick={handleCopy} disabled={!targetId || copying} className="btn btn-primary">
+                <CopyIcon size={13}/>{copying ? 'Copiando...' : 'Pegar en atleta destino'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Plan Templates ──────────────────────────────────────────
 
 interface DbPlanTemplate {
@@ -1107,6 +1238,10 @@ export default function PlannerPage() {
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [applyingTemplate, setApplyingTemplate] = useState(false);
   const [copyingSession, setCopyingSession] = useState<DbSession | null>(null);
+  const [showCopyPlanModal, setShowCopyPlanModal] = useState(false);
+  // calendar drag state
+  const [calDragging, setCalDragging] = useState<string | null>(null);
+  const [calDropOver, setCalDropOver] = useState<string | null>(null);
 
   // ── Fetch athlete ──────────────────────────────────────────
   useEffect(() => {
@@ -1427,6 +1562,33 @@ export default function PlannerPage() {
     })));
   }
 
+  // ── Move session to another date (calendar drag-drop) ─────
+  async function handleMoveSession(fromDate: string, toDate: string) {
+    if (fromDate === toDate) return;
+    const supabase = createClient();
+    await supabase.from('sessions').update({ date: toDate }).eq('athlete_id', id).eq('date', fromDate);
+    setMonthSessionMap(prev => {
+      const next = new Map(prev);
+      const title = next.get(fromDate);
+      next.delete(fromDate);
+      if (title) next.set(toDate, title);
+      return next;
+    });
+    if (selectedDay) {
+      const srcDate = toISO(cellDate(currentYear, currentMonth, selectedDay.w, selectedDay.d));
+      if (srcDate === fromDate) {
+        for (let w = 0; w < 4; w++) {
+          for (let d = 0; d < 7; d++) {
+            if (toISO(cellDate(currentYear, currentMonth, w, d)) === toDate) {
+              setSelectedDay({ w, d });
+              setDaySessions(prev => prev.map(s => ({ ...s, date: toDate })));
+            }
+          }
+        }
+      }
+    }
+  }
+
   // ── Save month plan ────────────────────────────────────────
   async function savePlan(plan: PlanCell[][]) {
     const supabase = createClient();
@@ -1641,6 +1803,15 @@ export default function PlannerPage() {
           }}
         />
       )}
+      {showCopyPlanModal && (
+        <CopyPlanToAthleteModal
+          currentAthleteId={id}
+          year={currentYear}
+          month={currentMonth}
+          plan={monthPlan}
+          onClose={() => setShowCopyPlanModal(false)}
+        />
+      )}
       {editSession && (
         <EditSessionModal session={editSession} onClose={() => setEditSession(null)}
           onSaved={updated => {
@@ -1723,6 +1894,9 @@ export default function PlannerPage() {
             <button className="btn btn-ghost" onClick={handleDuplicatePrevMonth} disabled={duplicating}>
               <CopyIcon size={13}/>{duplicating ? 'Copiando...' : 'Duplicar mes anterior'}
             </button>
+            <button className="btn btn-ghost" onClick={() => setShowCopyPlanModal(true)} title="Copiar este plan mensual a otro atleta">
+              <CopyIcon size={13}/>Copiar a atleta
+            </button>
             <button className="btn btn-ghost" onClick={() => setShowTemplateModal(true)}>
               <LayersIcon size={13}/>Aplicar plantilla
             </button>
@@ -1777,18 +1951,62 @@ export default function PlannerPage() {
                   const sessionTitle = monthSessionMap.get(dateISO);
                   const hasSession = !!sessionTitle;
 
+                  const isDropTarget = !!calDragging && calDragging !== dateISO && !hasSession;
+                  const isDraggingThis = calDragging === dateISO;
+                  const isDropOver = calDropOver === dateISO;
+
                   const displayColor = hasSession ? '#2E6BD6' : (isAllRest ? 'var(--text-muted)' : t.color);
-                  const displayBg    = hasSession ? 'rgba(46,107,214,0.10)' : (isAllRest ? 'var(--surface-2)' : t.bg);
+                  let displayBg = hasSession ? 'rgba(46,107,214,0.10)' : (isAllRest ? 'var(--surface-2)' : t.bg);
+                  if (isDropOver) displayBg = 'rgba(43,182,115,0.18)';
+
+                  let borderStyle: string;
+                  if (isDropOver) borderStyle = '2px dashed #2BB673';
+                  else if (isSelected) borderStyle = `2px solid ${displayColor}`;
+                  else if (isDropTarget && calDragging) borderStyle = '1px dashed #2BB673';
+                  else borderStyle = `1px solid ${isToday ? displayColor : 'var(--border)'}`;
 
                   return (
-                    <button key={`${wi}-${di}`} onClick={() => setSelectedDay({ w: wi, d: di })} style={{
-                      padding: '8px 7px', borderRadius: 8, minHeight: 82,
-                      background: displayBg,
-                      border: isSelected ? `2px solid ${displayColor}` : `1px solid ${isToday ? displayColor : 'var(--border)'}`,
-                      cursor: 'pointer', textAlign: 'left',
-                      display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-                      gap: 3, fontFamily: 'inherit', opacity: inMonth ? 1 : 0.45,
-                    }}>
+                    <button
+                      key={`${wi}-${di}`}
+                      draggable={hasSession}
+                      onClick={() => setSelectedDay({ w: wi, d: di })}
+                      onDragStart={e => {
+                        if (!hasSession) return;
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('cal/date', dateISO);
+                        setCalDragging(dateISO);
+                      }}
+                      onDragEnd={() => { setCalDragging(null); setCalDropOver(null); }}
+                      onDragOver={e => {
+                        if (!calDragging || calDragging === dateISO || hasSession) return;
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                        if (calDropOver !== dateISO) setCalDropOver(dateISO);
+                      }}
+                      onDragLeave={e => {
+                        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                          if (calDropOver === dateISO) setCalDropOver(null);
+                        }
+                      }}
+                      onDrop={async e => {
+                        e.preventDefault();
+                        const from = e.dataTransfer.getData('cal/date') || calDragging;
+                        if (!from || from === dateISO || hasSession) return;
+                        setCalDragging(null); setCalDropOver(null);
+                        await handleMoveSession(from, dateISO);
+                      }}
+                      style={{
+                        padding: '8px 7px', borderRadius: 8, minHeight: 82,
+                        background: displayBg,
+                        border: borderStyle,
+                        cursor: hasSession ? (isDraggingThis ? 'grabbing' : 'grab') : 'pointer',
+                        textAlign: 'left',
+                        display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                        gap: 3, fontFamily: 'inherit',
+                        opacity: isDraggingThis ? 0.45 : (inMonth ? 1 : 0.45),
+                        transition: 'background 0.1s, border-color 0.1s',
+                      }}
+                    >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span className="mono" style={{ fontSize: 10, fontWeight: 700, color: isToday ? displayColor : 'var(--text-muted)' }}>{dayNum}</span>
                         {isToday && <span style={{ fontSize: 8, fontWeight: 700, color: displayColor, letterSpacing: '0.08em' }}>HOY</span>}
@@ -1801,6 +2019,8 @@ export default function PlannerPage() {
                               {sessionTitle}
                             </div>
                           </>
+                        ) : isDropOver ? (
+                          <div style={{ fontSize: 9, fontWeight: 700, color: '#2BB673' }}>Mover aquí</div>
                         ) : isAllRest ? (
                           <div style={{ fontSize: 10, fontWeight: 600, color: displayColor }}>{t.label}</div>
                         ) : (
