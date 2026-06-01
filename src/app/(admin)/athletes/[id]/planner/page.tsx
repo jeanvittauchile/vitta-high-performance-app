@@ -282,7 +282,7 @@ interface SetDraft { id: number; reps: string; load: string; rpe: string; rest: 
 
 function AddExerciseForm({ blockId, category, onSaved, onCancel }: {
   blockId: string; category: CategoryId;
-  onSaved: () => void; onCancel: () => void;
+  onSaved: (newExId: string) => void; onCancel: () => void;
 }) {
   const [name, setName] = useState('');
   const [level, setLevel] = useState<LevelId>('basico');
@@ -290,11 +290,9 @@ function AddExerciseForm({ blockId, category, onSaved, onCancel }: {
   const [videoUrl, setVideoUrl] = useState('');
   const [exerciseId, setExerciseId] = useState<string | null>(null);
   const [draftSets, setDraftSets] = useState<SetDraft[]>([
-    { id: 1, reps: '5', load: '', rpe: '7', rest: '2:00' },
-    { id: 2, reps: '5', load: '', rpe: '7', rest: '2:00' },
-    { id: 3, reps: '5', load: '', rpe: '7', rest: '2:00' },
+    { id: 1, reps: '', load: '', rpe: '', rest: '' },
   ]);
-  const [counter, setCounter] = useState(4);
+  const [counter, setCounter] = useState(2);
   const [libExercises, setLibExercises] = useState<LibEx[]>([]);
   const [showSugg, setShowSugg] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -355,7 +353,7 @@ function AddExerciseForm({ blockId, category, onSaved, onCancel }: {
       if (setsErr) { setSaveError(setsErr.message); setSaving(false); return; }
     }
     setSaving(false);
-    onSaved();
+    onSaved(exData.id);
   }
 
   return (
@@ -1270,6 +1268,31 @@ export default function PlannerPage() {
     }
   }
 
+  // ── Move block up / down ───────────────────────────────────
+  async function moveBlock(blockId: string, sessionId: string, dir: 'up' | 'down') {
+    const session = daySessions.find(s => s.id === sessionId);
+    if (!session) return;
+    const sorted = [...session.session_blocks].sort((a, b) => a.sort_order - b.sort_order);
+    const idx = sorted.findIndex(b => b.id === blockId);
+    const swapIdx = dir === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= sorted.length) return;
+    const a = sorted[idx];
+    const b = sorted[swapIdx];
+    const supabase = createClient();
+    await supabase.from('session_blocks').update({ sort_order: b.sort_order }).eq('id', a.id);
+    await supabase.from('session_blocks').update({ sort_order: a.sort_order }).eq('id', b.id);
+    setDaySessions(prev => prev.map(s =>
+      s.id !== sessionId ? s : {
+        ...s,
+        session_blocks: s.session_blocks.map(bl => {
+          if (bl.id === a.id) return { ...bl, sort_order: b.sort_order };
+          if (bl.id === b.id) return { ...bl, sort_order: a.sort_order };
+          return bl;
+        }).sort((x, y) => x.sort_order - y.sort_order),
+      }
+    ));
+  }
+
   // ── Delete block ───────────────────────────────────────────
   async function deleteBlock(blockId: string, sessionId: string) {
     if (!confirm('¿Eliminar este bloque? Se borrarán todos sus ejercicios y series.')) return;
@@ -1300,6 +1323,36 @@ export default function PlannerPage() {
     })));
   }
 
+  // ── Move exercise up / down ────────────────────────────────
+  async function moveExercise(exerciseId: string, blockId: string, dir: 'up' | 'down') {
+    const session = daySessions.find(s => s.session_blocks.some(b => b.id === blockId));
+    if (!session) return;
+    const block = session.session_blocks.find(b => b.id === blockId);
+    if (!block) return;
+    const sorted = [...block.session_exercises].sort((a, b) => a.sort_order - b.sort_order);
+    const idx = sorted.findIndex(e => e.id === exerciseId);
+    const swapIdx = dir === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= sorted.length) return;
+    const a = sorted[idx];
+    const b = sorted[swapIdx];
+    const supabase = createClient();
+    await supabase.from('session_exercises').update({ sort_order: b.sort_order }).eq('id', a.id);
+    await supabase.from('session_exercises').update({ sort_order: a.sort_order }).eq('id', b.id);
+    setDaySessions(prev => prev.map(s => ({
+      ...s,
+      session_blocks: s.session_blocks.map(bl =>
+        bl.id !== blockId ? bl : {
+          ...bl,
+          session_exercises: bl.session_exercises.map(e => {
+            if (e.id === a.id) return { ...e, sort_order: b.sort_order };
+            if (e.id === b.id) return { ...e, sort_order: a.sort_order };
+            return e;
+          }).sort((x, y) => x.sort_order - y.sort_order),
+        }
+      ),
+    })));
+  }
+
   // ── Add exercise from sidebar pill ────────────────────────
   async function addExerciseFromPill(blockId: string) {
     if (!pillEx) return;
@@ -1313,9 +1366,7 @@ export default function PlannerPage() {
       .select('id').single();
     if (exData) {
       await supabase.from('sets').insert([
-        { session_ex_id: exData.id, reps: '5', done: false, sort_order: 0 },
-        { session_ex_id: exData.id, reps: '5', done: false, sort_order: 1 },
-        { session_ex_id: exData.id, reps: '5', done: false, sort_order: 2 },
+        { session_ex_id: exData.id, reps: null, done: false, sort_order: 0 },
       ]);
       await fetchDaySessions();
     }
@@ -1335,9 +1386,7 @@ export default function PlannerPage() {
       .select('id').single();
     if (exData) {
       await supabase.from('sets').insert([
-        { session_ex_id: exData.id, reps: '5', done: false, sort_order: 0 },
-        { session_ex_id: exData.id, reps: '5', done: false, sort_order: 1 },
-        { session_ex_id: exData.id, reps: '5', done: false, sort_order: 2 },
+        { session_ex_id: exData.id, reps: null, done: false, sort_order: 0 },
       ]);
       await fetchDaySessions();
     }
@@ -1506,6 +1555,25 @@ export default function PlannerPage() {
     setMonthPlan(defaultPlan());
   }
 
+  // ── Save current month as template ────────────────────────
+  async function handleSaveAsTemplate() {
+    const name = window.prompt(
+      `Guardar ${MONTH_NAMES[currentMonth - 1]} ${currentYear} como plantilla\n\nNombre de la plantilla:`,
+      `${athlete?.name ? athlete.name + ' · ' : ''}${MONTH_NAMES[currentMonth - 1]} ${currentYear}`
+    );
+    if (!name || !name.trim()) return;
+    const supabase = createClient();
+    const { error } = await supabase.from('plan_templates').insert({
+      name: name.trim(),
+      description: `Generada desde el plan de ${MONTH_NAMES[currentMonth - 1]} ${currentYear}`,
+      plan: monthPlan,
+      exercises: {},
+      is_builtin: false,
+    });
+    if (error) { alert('Error al guardar la plantilla: ' + error.message); return; }
+    alert(`Plantilla "${name.trim()}" guardada correctamente.`);
+  }
+
   // ── Navigate months ────────────────────────────────────────
   function prevMonth() {
     if (currentMonth === 1) { setCurrentYear(y => y - 1); setCurrentMonth(12); } else setCurrentMonth(m => m - 1);
@@ -1657,6 +1725,9 @@ export default function PlannerPage() {
             </button>
             <button className="btn btn-ghost" onClick={() => setShowTemplateModal(true)}>
               <LayersIcon size={13}/>Aplicar plantilla
+            </button>
+            <button className="btn btn-ghost" onClick={handleSaveAsTemplate} title="Guardar el mes actual como plantilla reutilizable">
+              <LayersIcon size={13}/>Guardar como plantilla
             </button>
             <button className="btn btn-ghost" onClick={handleDeletePlan}
               style={{ color: '#D7474B' }}>
@@ -1904,6 +1975,16 @@ export default function PlannerPage() {
                                   </div>
                                 </div>
                                 <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                    <button onClick={() => moveBlock(block.id, session.id, 'up')} disabled={bi === 0} title="Subir bloque"
+                                      style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: bi === 0 ? 'default' : 'pointer', padding: '1px 3px', opacity: bi === 0 ? 0.25 : 0.65, lineHeight: 1 }}>
+                                      <ChevronDown size={11} style={{ transform: 'rotate(180deg)', display: 'block' }}/>
+                                    </button>
+                                    <button onClick={() => moveBlock(block.id, session.id, 'down')} disabled={bi === session.session_blocks.length - 1} title="Bajar bloque"
+                                      style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: bi === session.session_blocks.length - 1 ? 'default' : 'pointer', padding: '1px 3px', opacity: bi === session.session_blocks.length - 1 ? 0.25 : 0.65, lineHeight: 1 }}>
+                                      <ChevronDown size={11} style={{ display: 'block' }}/>
+                                    </button>
+                                  </div>
                                   <button onClick={() => setEditBlockId(block.id)} title="Editar bloque"
                                     style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '3px 5px', borderRadius: 5 }}>
                                     <PencilIcon size={12}/>
@@ -1936,7 +2017,7 @@ export default function PlannerPage() {
                                   return (
                                     <div key={item.id} style={{ background: 'white', borderRadius: 6, border: '1px solid var(--border)', overflow: 'hidden' }}>
                                       <div
-                                        style={{ display: 'grid', gridTemplateColumns: '20px 1fr auto auto', gap: 8, alignItems: 'center', padding: '8px 10px', fontSize: 12, cursor: 'pointer' }}
+                                        style={{ display: 'grid', gridTemplateColumns: '20px 1fr auto auto auto', gap: 8, alignItems: 'center', padding: '8px 10px', fontSize: 12, cursor: 'pointer' }}
                                         onClick={() => toggleEx(item.id)}
                                       >
                                         <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)' }}>
@@ -1953,6 +2034,20 @@ export default function PlannerPage() {
                                             )}
                                           </div>
                                           {item.note && <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>{item.note}</div>}
+                                        </div>
+                                        <div onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                          <button onClick={e => { e.stopPropagation(); moveExercise(item.id, block.id, 'up'); }}
+                                            disabled={idx === 0}
+                                            title="Subir ejercicio"
+                                            style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: idx === 0 ? 'default' : 'pointer', padding: '1px 3px', opacity: idx === 0 ? 0.25 : 0.65, lineHeight: 1 }}>
+                                            <ChevronDown size={11} style={{ transform: 'rotate(180deg)', display: 'block' }}/>
+                                          </button>
+                                          <button onClick={e => { e.stopPropagation(); moveExercise(item.id, block.id, 'down'); }}
+                                            disabled={idx === block.session_exercises.length - 1}
+                                            title="Bajar ejercicio"
+                                            style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: idx === block.session_exercises.length - 1 ? 'default' : 'pointer', padding: '1px 3px', opacity: idx === block.session_exercises.length - 1 ? 0.25 : 0.65, lineHeight: 1 }}>
+                                            <ChevronDown size={11} style={{ display: 'block' }}/>
+                                          </button>
                                         </div>
                                         <button onClick={e => { e.stopPropagation(); deleteExercise(item.id, block.id); }}
                                           style={{ background: 'transparent', border: 'none', color: '#D7474B', cursor: 'pointer', padding: '2px 4px', opacity: 0.7 }}>
@@ -2026,7 +2121,7 @@ export default function PlannerPage() {
                                 <AddExerciseForm
                                   blockId={block.id}
                                   category={block.category}
-                                  onSaved={() => { setAddExerciseFor(null); fetchDaySessions(); }}
+                                  onSaved={async (newExId) => { setAddExerciseFor(null); await fetchDaySessions(); setExpandedEx(prev => new Set([...prev, newExId])); }}
                                   onCancel={() => setAddExerciseFor(null)}
                                 />
                               )}
