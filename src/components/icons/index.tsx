@@ -250,6 +250,35 @@ export const ExternalLinkIcon = (p: IconProps) => (
     <line x1="10" y1="14" x2="21" y2="3"/>
   </Icon>
 );
+export const EyeIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+    <circle cx="12" cy="12" r="3"/>
+  </Icon>
+);
+export const EyeOffIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/>
+    <line x1="1" y1="1" x2="23" y2="23"/>
+  </Icon>
+);
+export const DownloadIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+    <polyline points="7 10 12 15 17 10"/>
+    <line x1="12" y1="15" x2="12" y2="3"/>
+  </Icon>
+);
+export const GripIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="9" cy="6" r="1" fill="currentColor" stroke="none"/>
+    <circle cx="15" cy="6" r="1" fill="currentColor" stroke="none"/>
+    <circle cx="9" cy="12" r="1" fill="currentColor" stroke="none"/>
+    <circle cx="15" cy="12" r="1" fill="currentColor" stroke="none"/>
+    <circle cx="9" cy="18" r="1" fill="currentColor" stroke="none"/>
+    <circle cx="15" cy="18" r="1" fill="currentColor" stroke="none"/>
+  </Icon>
+);
 
 export const DeportivoIcon = (p: IconProps) => <Icon {...p} d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>;
 export const DesafioIcon   = (p: IconProps) => <Icon {...p} d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>;

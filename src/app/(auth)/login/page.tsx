@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
-import { LockIcon } from '@/components/icons';
+import { LockIcon, EyeIcon, EyeOffIcon } from '@/components/icons';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -10,6 +10,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -72,17 +73,31 @@ export default function LoginPage() {
               <label style={{ fontSize: 11, fontWeight: 700, color: 'rgba(244,239,224,0.6)', letterSpacing: '0.06em', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
                 Contraseña
               </label>
-              <input
-                type="password" value={password} onChange={e => setPassword(e.target.value)}
-                required autoComplete="current-password"
-                placeholder="••••••••"
-                style={{
-                  width: '100%', padding: '10px 12px', borderRadius: 8,
-                  border: '1px solid rgba(244,239,224,0.15)',
-                  background: 'rgba(255,255,255,0.06)', color: 'var(--vitta-cream)',
-                  fontFamily: 'var(--font-body)', fontSize: 13, outline: 'none',
-                }}
-              />
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
+                  required autoComplete="current-password"
+                  placeholder="••••••••"
+                  style={{
+                    width: '100%', padding: '10px 40px 10px 12px', borderRadius: 8,
+                    border: '1px solid rgba(244,239,224,0.15)',
+                    background: 'rgba(255,255,255,0.06)', color: 'var(--vitta-cream)',
+                    fontFamily: 'var(--font-body)', fontSize: 13, outline: 'none',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(v => !v)}
+                  style={{
+                    position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: 'rgba(244,239,224,0.45)', padding: 2, display: 'grid', placeItems: 'center',
+                  }}
+                  title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                >
+                  {showPassword ? <EyeOffIcon size={15}/> : <EyeIcon size={15}/>}
+                </button>
+              </div>
             </div>
 
             {error && (

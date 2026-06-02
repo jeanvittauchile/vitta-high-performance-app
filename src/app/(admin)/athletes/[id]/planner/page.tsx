@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { CATEGORIES, DAY_TYPES } from '@/lib/constants';
 import { computeExerciseBests, type BestEntry } from '@/lib/exercise-bests';
-import { getCategoryIcon, PlusIcon, CopyIcon, LayersIcon, ChevronLeft, ChevronRight, ChevronDown, TrashIcon, PencilIcon, CheckIcon, XIcon, TrendIcon } from '@/components/icons';
+import { getCategoryIcon, PlusIcon, CopyIcon, LayersIcon, ChevronLeft, ChevronRight, ChevronDown, TrashIcon, PencilIcon, CheckIcon, XIcon, TrendIcon, GripIcon, DownloadIcon } from '@/components/icons';
 import LevelBadge from '@/components/badges/LevelBadge';
 import type { Athlete, DayType, CategoryId, LevelId } from '@/lib/types';
 
@@ -1220,6 +1220,7 @@ export default function PlannerPage() {
   const [pillSession, setPillSession] = useState<string | null>(null);
   const [pillAdding, setPillAdding] = useState(false);
   const [dragOverBlock, setDragOverBlock] = useState<string | null>(null);
+  const [dragBlock, setDragBlock] = useState<{ id: string; sessionId: string } | null>(null);
   const [monthPlan, setMonthPlan] = useState<PlanCell[][]>(defaultPlan());
   // date -> first session title (for calendar display)
   const [monthSessionMap, setMonthSessionMap] = useState<Map<string, string>>(new Map());
@@ -1403,6 +1404,120 @@ export default function PlannerPage() {
     }
   }
 
+  // ── Download monthly plan as PDF ──────────────────────────
+  async function downloadMonthPDF() {
+    const supabase = createClient();
+    const start = calendarStart(currentYear, currentMonth);
+    const endDate = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 28 - 1);
+    const { data } = await supabase
+      .from('sessions')
+      .select(`id, title, duration, rpe_target, date,
+        session_blocks ( id, name, category, color, sort_order,
+          session_exercises ( id, name, level, sort_order,
+            sets ( id, reps, load, rpe_target, rest, sort_order )
+          )
+        )`)
+      .eq('athlete_id', id)
+      .gte('date', toISO(start))
+      .lte('date', toISO(endDate));
+
+    const sessionsByDate = new Map<string, any[]>();
+    for (const s of (data || [])) {
+      if (!sessionsByDate.has(s.date)) sessionsByDate.set(s.date, []);
+      sessionsByDate.get(s.date)!.push({
+        ...s,
+        session_blocks: (s.session_blocks || [])
+          .sort((a: any, b: any) => a.sort_order - b.sort_order)
+          .map((bl: any) => ({
+            ...bl,
+            session_exercises: (bl.session_exercises || [])
+              .sort((a: any, b: any) => a.sort_order - b.sort_order)
+              .map((ex: any) => ({ ...ex, sets: (ex.sets || []).sort((a: any, b: any) => a.sort_order - b.sort_order) })),
+          })),
+      });
+    }
+
+    const dayNames = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+    const monthLabel = `${MONTH_NAMES[currentMonth - 1]} ${currentYear}`;
+    const athleteName = athlete?.name || '';
+
+    let html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+    <title>Plan ${athleteName} · ${monthLabel}</title>
+    <style>
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{font-family:Arial,sans-serif;font-size:10px;color:#111;background:#fff}
+      .page{padding:18px 20px;page-break-before:always;min-height:100vh;display:flex;flex-direction:column;gap:12px}
+      .page:first-child{page-break-before:auto}
+      .page-header{display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:10px;border-bottom:2px solid #0E1936}
+      .athlete-name{font-size:17px;font-weight:700;color:#0E1936}
+      .month-sub{font-size:10px;color:#666;margin-top:2px;letter-spacing:.04em;text-transform:uppercase}
+      .week-badge{font-size:13px;font-weight:700;color:#2E6BD6;letter-spacing:-.02em}
+      .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;flex:1}
+      .day{border:1px solid #ddd;border-radius:6px;overflow:hidden;min-height:120px}
+      .day-head{background:#f0f0f0;padding:5px 7px;display:flex;justify-content:space-between;align-items:center}
+      .day-name{font-weight:700;font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:#333}
+      .day-num{font-size:11px;font-weight:700;color:#0E1936}
+      .out-month .day-head{background:#f8f8f8;color:#bbb}
+      .out-month .day-name,.out-month .day-num{color:#ccc}
+      .session{padding:6px 7px}
+      .sess-title{font-weight:700;font-size:9.5px;color:#0E1936;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .sess-meta{font-size:8px;color:#888;margin-bottom:5px}
+      .block{margin-bottom:5px}
+      .block-label{display:inline-block;font-size:8px;font-weight:700;padding:1px 5px;border-radius:3px;margin-bottom:2px;letter-spacing:.03em}
+      .ex{font-size:8.5px;padding-left:6px;margin:1px 0;line-height:1.3}
+      .ex-name{font-weight:600}
+      .ex-sets{color:#777}
+      .rest{padding:6px 7px;font-size:9px;color:#bbb;font-style:italic}
+      .footer{font-size:8px;color:#aaa;text-align:center;padding-top:6px;border-top:1px solid #eee}
+      @media print{.page{page-break-before:always}.page:first-child{page-break-before:auto}}
+    </style></head><body>`;
+
+    for (let wi = 0; wi < 4; wi++) {
+      html += `<div class="page"><div class="page-header"><div><div class="athlete-name">${athleteName}</div><div class="month-sub">${monthLabel} · Plan mensual</div></div><div class="week-badge">Semana ${wi + 1}</div></div><div class="grid">`;
+      for (let di = 0; di < 7; di++) {
+        const date = cellDate(currentYear, currentMonth, wi, di);
+        const dateISO = toISO(date);
+        const inMonth = date.getMonth() + 1 === currentMonth;
+        const sessions = sessionsByDate.get(dateISO) || [];
+        const cellTypes = monthPlan[wi]?.[di] || ['REST'];
+        const isAllRest = cellTypes.every(t => t === 'REST');
+        html += `<div class="day${!inMonth ? ' out-month' : ''}"><div class="day-head"><span class="day-name">${dayNames[di]}</span><span class="day-num">${date.getDate()}</span></div>`;
+        if (sessions.length > 0) {
+          for (const sess of sessions) {
+            html += `<div class="session"><div class="sess-title">${sess.title}</div><div class="sess-meta">${sess.duration}min · RPE ${sess.rpe_target}</div>`;
+            for (const block of sess.session_blocks) {
+              const bc = block.color || '#2E6BD6';
+              html += `<div class="block"><span class="block-label" style="background:${bc}22;color:${bc}">${block.name}</span>`;
+              for (const ex of block.session_exercises) {
+                const firstSet = ex.sets[0];
+                const setsStr = ex.sets.length > 0 ? `${ex.sets.length}×${firstSet?.reps || '—'}${firstSet?.load ? ` ${firstSet.load}kg` : ''}` : '';
+                html += `<div class="ex"><span class="ex-name">${ex.name}</span>${setsStr ? ` <span class="ex-sets">${setsStr}</span>` : ''}</div>`;
+              }
+              html += `</div>`;
+            }
+            html += `</div>`;
+          }
+        } else if (isAllRest) {
+          html += `<div class="rest">Descanso</div>`;
+        } else {
+          const types = cellTypes.filter(t => t !== 'REST');
+          html += `<div class="rest" style="color:#2E6BD6">${types.join(', ')}</div>`;
+        }
+        html += `</div>`;
+      }
+      html += `</div><div class="footer">Vitta High Performance · ${athleteName} · ${monthLabel}</div></div>`;
+    }
+    html += `</body></html>`;
+
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+      win.focus();
+      setTimeout(() => win.print(), 400);
+    }
+  }
+
   // ── Move block up / down ───────────────────────────────────
   async function moveBlock(blockId: string, sessionId: string, dir: 'up' | 'down') {
     const session = daySessions.find(s => s.id === sessionId);
@@ -1425,6 +1540,25 @@ export default function PlannerPage() {
           return bl;
         }).sort((x, y) => x.sort_order - y.sort_order),
       }
+    ));
+  }
+
+  async function reorderBlocks(dragId: string, dropId: string, sessionId: string) {
+    const session = daySessions.find(s => s.id === sessionId);
+    if (!session) return;
+    const sorted = [...session.session_blocks].sort((a, b) => a.sort_order - b.sort_order);
+    const dragIdx = sorted.findIndex(b => b.id === dragId);
+    const dropIdx = sorted.findIndex(b => b.id === dropId);
+    if (dragIdx === -1 || dropIdx === -1 || dragIdx === dropIdx) return;
+    const reordered = [...sorted];
+    const [dragged] = reordered.splice(dragIdx, 1);
+    reordered.splice(dropIdx, 0, dragged);
+    const supabase = createClient();
+    await Promise.all(reordered.map((b, i) =>
+      supabase.from('session_blocks').update({ sort_order: i }).eq('id', b.id)
+    ));
+    setDaySessions(prev => prev.map(s =>
+      s.id !== sessionId ? s : { ...s, session_blocks: reordered.map((b, i) => ({ ...b, sort_order: i })) }
     ));
   }
 
@@ -1891,6 +2025,9 @@ export default function PlannerPage() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
+            <button className="btn btn-ghost" onClick={downloadMonthPDF} title="Descargar plan mensual en PDF (una página por semana)">
+              <DownloadIcon size={13}/>Descargar PDF
+            </button>
             <button className="btn btn-ghost" onClick={handleDuplicatePrevMonth} disabled={duplicating}>
               <CopyIcon size={13}/>{duplicating ? 'Copiando...' : 'Duplicar mes anterior'}
             </button>
@@ -2125,21 +2262,35 @@ export default function PlannerPage() {
                       const isCollapsed = isDone || collapsedBlocks.has(block.id);
                       return (
                         <div key={block.id}
+                          draggable
+                          onDragStart={e => {
+                            setDragBlock({ id: block.id, sessionId: session.id });
+                            e.dataTransfer.setData('block/id', block.id);
+                            e.dataTransfer.effectAllowed = 'move';
+                          }}
+                          onDragEnd={() => { setDragBlock(null); setDragOverBlock(null); }}
                           onDragOver={e => { e.preventDefault(); setDragOverBlock(block.id); }}
                           onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverBlock(null); }}
                           onDrop={e => {
                             e.preventDefault();
                             setDragOverBlock(null);
+                            const srcBlockId = e.dataTransfer.getData('block/id');
+                            if (srcBlockId && srcBlockId !== block.id) {
+                              reorderBlocks(srcBlockId, block.id, session.id);
+                              return;
+                            }
                             const name = e.dataTransfer.getData('ex/name');
                             const level = e.dataTransfer.getData('ex/level');
                             if (name) addExerciseByDrop(block.id, name, level);
                           }}
                           style={{
-                            background: dragOverBlock === block.id ? `${blockColor}18` : isDone ? 'rgba(43,182,115,0.06)' : 'var(--surface-2)',
+                            background: dragOverBlock === block.id && dragBlock ? 'rgba(46,107,214,0.08)' : dragOverBlock === block.id ? `${blockColor}18` : isDone ? 'rgba(43,182,115,0.06)' : 'var(--surface-2)',
                             borderRadius: 10,
-                            border: `2px solid ${dragOverBlock === block.id ? blockColor : isDone ? 'rgba(43,182,115,0.3)' : 'var(--border)'}`,
+                            border: dragOverBlock === block.id && dragBlock ? '2px dashed #2E6BD6' : `2px solid ${dragOverBlock === block.id ? blockColor : isDone ? 'rgba(43,182,115,0.3)' : 'var(--border)'}`,
                             overflow: 'hidden',
                             transition: 'border-color 0.12s, background 0.12s',
+                            opacity: dragBlock?.id === block.id ? 0.5 : 1,
+                            cursor: 'grab',
                           }}>
                           {/* Block header */}
                           <div style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -2181,6 +2332,9 @@ export default function PlannerPage() {
                               </>
                             ) : (
                               <>
+                                <div style={{ color: 'var(--text-muted)', opacity: 0.4, cursor: 'grab', padding: '2px 2px', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                                  <GripIcon size={13}/>
+                                </div>
                                 <button onClick={() => toggleBlockCollapse(block.id)}
                                   style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 3px', color: 'var(--text-muted)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
                                   <ChevronDown size={14} style={{ transition: 'transform 0.15s', transform: isCollapsed ? 'rotate(-90deg)' : 'none' }}/>
