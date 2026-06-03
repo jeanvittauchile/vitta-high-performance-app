@@ -3,14 +3,13 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase';
-import { VittaMark, HomeIcon, UsersIcon, CalendarIcon, LayersIcon, MessageIcon, LogOutIcon, LockIcon, CheckIcon } from '@/components/icons';
+import { VittaMark, HomeIcon, UsersIcon, CalendarIcon, LayersIcon, LogOutIcon, LockIcon, CheckIcon } from '@/components/icons';
 
 const items = [
   { href: '/dashboard', label: 'Dashboard',    Icon: HomeIcon    },
   { href: '/athletes',  label: 'Atletas',      Icon: UsersIcon   },
   { href: '/planner',   label: 'Planificador', Icon: CalendarIcon},
   { href: '/library',   label: 'Biblioteca',   Icon: LayersIcon  },
-  { href: '/messages',  label: 'Mensajes',     Icon: MessageIcon },
 ];
 
 export default function AdminSidebar() {

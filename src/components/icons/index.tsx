@@ -227,6 +227,12 @@ export const LockIcon = (p: IconProps) => (
     <path d="M7 11V7a5 5 0 0110 0v4"/>
   </Icon>
 );
+export const UserIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
+    <circle cx="12" cy="7" r="4"/>
+  </Icon>
+);
 export const LogOutIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>

@@ -4,7 +4,25 @@ import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase';
 import { computeExerciseBests, type BestEntry } from '@/lib/exercise-bests';
-import { ChevronLeft, TrendIcon } from '@/components/icons';
+import { ChevronLeft, TrendIcon, UserIcon } from '@/components/icons';
+
+const NIVELES: Record<number, { label: string; sub: string }> = {
+  1: { label: 'Principiante', sub: 'Menos de 1 año' },
+  2: { label: 'Intermedio',   sub: '1 – 3 años'     },
+  3: { label: 'Avanzado',     sub: '3 – 8 años'     },
+  4: { label: 'Elite',        sub: 'Más de 8 años'  },
+};
+
+interface AthleteProfile {
+  id: string;
+  peso: number | null;
+  estatura: number | null;
+  dias_entrenamiento: number | null;
+  promedio_kcal: number | null;
+  nivel_entrenamiento: number | null;
+  historial_lesiones: string | null;
+  created_at: string;
+}
 
 interface SessionRecord {
   date: string;
@@ -39,6 +57,7 @@ export default function AthleteProgress() {
   const [athleteName, setAthleteName] = useState('');
   const [bests, setBests] = useState<BestEntry[]>([]);
   const [sessionRecords, setSessionRecords] = useState<SessionRecord[]>([]);
+  const [profile, setProfile] = useState<AthleteProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -47,6 +66,7 @@ export default function AthleteProgress() {
 
     Promise.all([
       supabase.from('athletes').select('name').eq('id', athleteId).maybeSingle(),
+      supabase.from('athlete_profiles').select('*').eq('athlete_id', athleteId).order('created_at', { ascending: false }).limit(1).maybeSingle(),
       supabase
         .from('sessions')
         .select(`
@@ -64,8 +84,9 @@ export default function AthleteProgress() {
         .eq('athlete_id', athleteId)
         .order('date', { ascending: false })
         .limit(20),
-    ]).then(([{ data: ath }, { data: sessions }, { data: sessFb }]) => {
+    ]).then(([{ data: ath }, { data: prof }, { data: sessions }, { data: sessFb }]) => {
       if (ath) setAthleteName(ath.name);
+      if (prof) setProfile(prof as AthleteProfile);
       setBests(computeExerciseBests(sessions ?? []));
       const records: SessionRecord[] = (sessFb ?? [])
         .map((s: any) => {
@@ -102,6 +123,49 @@ export default function AthleteProgress() {
       </div>
 
       <div style={{ maxWidth: 540, margin: '0 auto', padding: '20px 16px 48px' }}>
+        {/* Perfil Deportivo */}
+        <div style={{ marginBottom: 28 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+            <UserIcon size={20} stroke="rgba(74,138,240,0.9)"/>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#F4EFE0' }}>Perfil deportivo</div>
+          </div>
+          {profile ? (
+            <div style={{ display: 'grid', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+                {profile.peso != null && (
+                  <StatCard label="Peso" value={`${profile.peso} kg`}/>
+                )}
+                {profile.estatura != null && (
+                  <StatCard label="Estatura" value={`${profile.estatura} cm`}/>
+                )}
+                {profile.dias_entrenamiento != null && (
+                  <StatCard label="Días entrenados" value={String(profile.dias_entrenamiento)}/>
+                )}
+                {profile.promedio_kcal != null && (
+                  <StatCard label="Kcal diarias" value={`${profile.promedio_kcal} kcal`}/>
+                )}
+              </div>
+              {profile.nivel_entrenamiento != null && NIVELES[profile.nivel_entrenamiento] && (
+                <div style={{ padding: '12px 14px', borderRadius: 12, background: 'rgba(74,138,240,0.12)', border: '1px solid rgba(74,138,240,0.3)' }}>
+                  <div style={{ fontSize: 10, color: 'rgba(74,138,240,0.8)', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, marginBottom: 4 }}>Nivel</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: '#4A8AF0' }}>{NIVELES[profile.nivel_entrenamiento].label}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(74,138,240,0.7)', marginTop: 2 }}>{NIVELES[profile.nivel_entrenamiento].sub}</div>
+                </div>
+              )}
+              {profile.historial_lesiones && (
+                <div style={{ padding: '12px 14px', borderRadius: 12, background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.25)' }}>
+                  <div style={{ fontSize: 10, color: 'rgba(248,113,113,0.8)', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, marginBottom: 6 }}>Historial de lesiones</div>
+                  <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', lineHeight: 1.6 }}>{profile.historial_lesiones}</div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ padding: '20px 0', textAlign: 'center', color: 'rgba(255,255,255,0.35)', fontSize: 13 }}>
+              El atleta aún no ha completado su perfil deportivo.
+            </div>
+          )}
+        </div>
+
         {/* Session feedback & duration */}
         {sessionRecords.length > 0 && (
           <div style={{ marginBottom: 28 }}>
@@ -241,6 +305,15 @@ export default function AthleteProgress() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ padding: '12px 14px', borderRadius: 12, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)' }}>
+      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 800, color: '#F4EFE0', fontFamily: 'var(--font-mono)' }}>{value}</div>
     </div>
   );
 }
