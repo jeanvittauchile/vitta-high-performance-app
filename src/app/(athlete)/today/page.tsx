@@ -97,8 +97,29 @@ function parseRest(str: string | null | undefined): number {
 
 interface RestTimerState { targetSecs: number; startedAt: number; }
 
+function playBell() {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    [[880, 0.5, 1.6], [1320, 0.28, 1.0]].forEach(([freq, vol, dur]) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(vol, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + dur);
+    });
+  } catch (_) {}
+}
+
 function RestTimerBar({ timer, onStop }: { timer: RestTimerState; onStop: () => void }) {
   const [elapsed, setElapsed] = useState(() => Math.floor((Date.now() - timer.startedAt) / 1000));
+  const bellPlayedRef = useRef(false);
 
   useEffect(() => {
     const id = setInterval(() => setElapsed(Math.floor((Date.now() - timer.startedAt) / 1000)), 500);
@@ -107,6 +128,13 @@ function RestTimerBar({ timer, onStop }: { timer: RestTimerState; onStop: () => 
 
   const remaining = Math.max(0, timer.targetSecs - elapsed);
   const done = remaining === 0;
+
+  useEffect(() => {
+    if (done && timer.targetSecs > 0 && !bellPlayedRef.current) {
+      bellPlayedRef.current = true;
+      playBell();
+    }
+  }, [done, timer.targetSecs]);
   const progress = timer.targetSecs > 0 ? Math.min(1, elapsed / timer.targetSecs) : 1;
 
   return (

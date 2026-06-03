@@ -196,6 +196,7 @@ export default function StatsPage() {
       .from('sessions')
       .select(`
         id, date,
+        session_feedback(duration_seconds),
         session_blocks (
           id, category,
           session_exercises (
@@ -215,14 +216,18 @@ export default function StatsPage() {
           return;
         }
 
-        const totalSessions = sessions.length;
-        const doneSessions = sessions.filter((s: any) =>
-          s.session_blocks?.some((b: any) =>
+        function sessionIsCompleted(s: any): boolean {
+          const fb = Array.isArray(s.session_feedback) ? s.session_feedback[0] : s.session_feedback;
+          if (fb?.duration_seconds != null && fb.duration_seconds > 0) return true;
+          return s.session_blocks?.some((b: any) =>
             b.session_exercises?.some((e: any) =>
               e.sets?.some((set: any) => set.done)
             )
-          )
-        ).length;
+          ) ?? false;
+        }
+
+        const totalSessions = sessions.length;
+        const doneSessions = sessions.filter(sessionIsCompleted).length;
         const adherence = totalSessions > 0 ? Math.round(doneSessions / totalSessions * 100) : null;
 
         const sevenDaysAgo = daysAgoISO(7);
@@ -256,13 +261,7 @@ export default function StatsPage() {
         let streak = 0;
         const sessionDates = new Set(
           sessions
-            .filter((s: any) =>
-              s.session_blocks?.some((b: any) =>
-                b.session_exercises?.some((e: any) =>
-                  e.sets?.some((set: any) => set.done)
-                )
-              )
-            )
+            .filter(sessionIsCompleted)
             .map((s: any) => s.date)
         );
         let checkDate = new Date();
@@ -322,17 +321,18 @@ export default function StatsPage() {
       .from('sessions')
       .select('date, session_feedback(duration_seconds)')
       .eq('athlete_id', athleteId)
-      .order('date', { ascending: true })
+      .order('date', { ascending: false })
       .limit(30)
       .then(({ data }) => {
         if (data) {
-          const pts = data
+          const pts = (data as any[])
             .map((s: any) => {
               const fb = Array.isArray(s.session_feedback) ? s.session_feedback[0] : s.session_feedback;
-              if (!fb || fb.duration_seconds == null) return null;
+              if (!fb || fb.duration_seconds == null || fb.duration_seconds <= 0) return null;
               return { date: s.date as string, minutes: Math.round(fb.duration_seconds / 60) };
             })
-            .filter(Boolean) as DurationPoint[];
+            .filter(Boolean)
+            .reverse() as DurationPoint[];
           setDurationPoints(pts);
         }
         setDurationLoading(false);
