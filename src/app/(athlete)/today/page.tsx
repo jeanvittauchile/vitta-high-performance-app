@@ -516,6 +516,8 @@ export default function TodayPage() {
   // ─── Session timer ─────────────────────────────────────────
   const [timerStart, setTimerStart] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const [finalElapsed, setFinalElapsed] = useState(0);
+  const [sessionFinished, setSessionFinished] = useState(false);
 
   // ─── Rest timer ────────────────────────────────────────────
   const [restTimer, setRestTimer] = useState<RestTimerState | null>(null);
@@ -598,6 +600,8 @@ export default function TodayPage() {
     }
   }, [session?.id]);
 
+  useEffect(() => { setSessionFinished(false); }, [dateOffset]);
+
   // Timer tick
   useEffect(() => {
     if (timerStart === null) return;
@@ -678,6 +682,12 @@ export default function TodayPage() {
         }
       }
     }
+  }
+
+  function handleFinishSession() {
+    setFinalElapsed(elapsed);
+    setSessionFinished(true);
+    stopTimer();
   }
 
   async function toggleSet(setId: string, done: boolean) {
@@ -790,7 +800,7 @@ export default function TodayPage() {
           </button>
         ) : (
           <button
-            onClick={stopTimer}
+            onClick={handleFinishSession}
             style={{ padding: '12px 14px', borderRadius: 14, border: '1px solid rgba(43,182,115,0.4)', background: 'rgba(43,182,115,0.12)', color: 'var(--green)', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
           >
             <PauseIcon size={14}/> Finalizar
@@ -872,6 +882,33 @@ export default function TodayPage() {
           </div>
         </div>
       </div>
+
+      {(sessionActive || sessionFinished) && (
+        <div style={{ marginTop: 20 }}>
+          {!sessionFinished ? (
+            <button
+              onClick={handleFinishSession}
+              style={{
+                width: '100%', padding: '16px', borderRadius: 16, border: 'none',
+                background: 'var(--green)', color: '#fff', fontSize: 15, fontWeight: 700,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                boxShadow: '0 4px 20px rgba(43,182,115,0.35)',
+              }}
+            >
+              <CheckIcon size={18} stroke="white" strokeWidth={2.5}/> Finalizar Sesión
+            </button>
+          ) : (
+            <div style={{ padding: 20, background: 'rgba(43,182,115,0.10)', border: '1px solid rgba(43,182,115,0.30)', borderRadius: 16, textAlign: 'center' }}>
+              <div style={{ fontSize: 28, marginBottom: 8 }}>🏆</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--green)', marginBottom: 6 }}>¡Sesión completada!</div>
+              <div style={{ fontSize: 13, color: 'var(--d-text-muted)' }}>
+                Duración total:{' '}
+                <span className="display tnum" style={{ color: 'var(--vitta-cream)', fontSize: 16 }}>{formatTime(finalElapsed)}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {restTimer && (
         <RestTimerBar timer={restTimer} onStop={() => setRestTimer(null)}/>

@@ -93,6 +93,64 @@ function FeedbackChart({ points }: { points: FeedbackPoint[] }) {
   );
 }
 
+interface DurationPoint {
+  date: string;
+  minutes: number;
+}
+
+function DurationChart({ points }: { points: DurationPoint[] }) {
+  if (points.length < 1) return (
+    <div style={{ padding: '16px 0', textAlign: 'center', fontSize: 12, color: 'var(--d-text-faint)' }}>
+      Completa sesiones con timer para ver el gráfico.
+    </div>
+  );
+
+  const W = 300, H = 90;
+  const PAD_T = 8, PAD_B = 22;
+  const plotH = H - PAD_T - PAD_B;
+  const maxMin = Math.max(...points.map(p => p.minutes), 30);
+  const n = points.length;
+  const gap = W / n;
+  const barW = Math.max(4, gap * 0.55);
+
+  const labelIdxs = n <= 5
+    ? Array.from({ length: n }, (_, i) => i)
+    : [0, Math.floor(n / 2), n - 1];
+
+  return (
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', display: 'block', overflow: 'visible' }}>
+        {[0.25, 0.5, 0.75, 1].map(t => (
+          <line key={t} x1={0} y1={PAD_T + t * plotH} x2={W} y2={PAD_T + t * plotH}
+            stroke="rgba(255,255,255,0.07)" strokeWidth="0.6"/>
+        ))}
+        {points.map((p, i) => {
+          const barH = Math.max(2, (p.minutes / maxMin) * plotH);
+          const x = i * gap + (gap - barW) / 2;
+          const y = PAD_T + plotH - barH;
+          return (
+            <g key={i}>
+              <rect x={x} y={y} width={barW} height={barH} rx={2} fill="var(--vitta-blue)" opacity={0.75}/>
+              {n <= 8 && <text x={x + barW / 2} y={y - 3} textAnchor="middle" fontSize="7" fill="rgba(255,255,255,0.5)" fontFamily="monospace">{p.minutes}m</text>}
+            </g>
+          );
+        })}
+        {labelIdxs.map(i => (
+          <text key={i} x={i * gap + gap / 2} y={H - 4}
+            textAnchor={i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}
+            fontSize="7.5" fill="rgba(255,255,255,0.35)" fontFamily="monospace"
+          >
+            {points[i].date.slice(5)}
+          </text>
+        ))}
+      </svg>
+      <div style={{ marginTop: 6, fontSize: 10, color: 'var(--d-text-faint)', textAlign: 'right' }}>
+        Prom: {Math.round(points.reduce((a, p) => a + p.minutes, 0) / points.length)} min / sesión
+      </div>
+    </div>
+  );
+}
+
 interface StatsData {
   adherence: number | null;
   avgRpe: number | null;
@@ -123,6 +181,8 @@ export default function StatsPage() {
   const [bestsLoading, setBestsLoading] = useState(true);
   const [feedbackPoints, setFeedbackPoints] = useState<FeedbackPoint[]>([]);
   const [feedbackLoading, setFeedbackLoading] = useState(true);
+  const [durationPoints, setDurationPoints] = useState<DurationPoint[]>([]);
+  const [durationLoading, setDurationLoading] = useState(true);
 
   // ── Stats (28d) ────────────────────────────────────────────
   useEffect(() => {
@@ -254,6 +314,31 @@ export default function StatsPage() {
       });
   }, [athleteId, authLoading]);
 
+  // ── Duration per session ───────────────────────────────────
+  useEffect(() => {
+    if (authLoading || !athleteId) return;
+    const supabase = createClient();
+    supabase
+      .from('sessions')
+      .select('date, session_feedback(duration_seconds)')
+      .eq('athlete_id', athleteId)
+      .order('date', { ascending: true })
+      .limit(30)
+      .then(({ data }) => {
+        if (data) {
+          const pts = data
+            .map((s: any) => {
+              const fb = Array.isArray(s.session_feedback) ? s.session_feedback[0] : s.session_feedback;
+              if (!fb || fb.duration_seconds == null) return null;
+              return { date: s.date as string, minutes: Math.round(fb.duration_seconds / 60) };
+            })
+            .filter(Boolean) as DurationPoint[];
+          setDurationPoints(pts);
+        }
+        setDurationLoading(false);
+      });
+  }, [athleteId, authLoading]);
+
   // ── Bests (all-time) ───────────────────────────────────────
   useEffect(() => {
     if (authLoading || !athleteId) return;
@@ -335,6 +420,17 @@ export default function StatsPage() {
           <div style={{ padding: '14px 0', textAlign: 'center', fontSize: 12, color: 'var(--d-text-faint)' }}>Cargando...</div>
         ) : (
           <FeedbackChart points={feedbackPoints}/>
+        )}
+      </div>
+
+      {/* Duration per session */}
+      <div style={{ marginTop: 14, background: 'var(--d-surface)', border: '1px solid var(--d-border)', borderRadius: 16, padding: 16 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Duración por sesión</div>
+        <div style={{ fontSize: 10, color: 'var(--d-text-faint)', marginBottom: 12 }}>Tiempo real registrado al finalizar</div>
+        {durationLoading ? (
+          <div style={{ padding: '14px 0', textAlign: 'center', fontSize: 12, color: 'var(--d-text-faint)' }}>Cargando...</div>
+        ) : (
+          <DurationChart points={durationPoints}/>
         )}
       </div>
 
