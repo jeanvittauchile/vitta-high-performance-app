@@ -210,16 +210,14 @@ function ExerciseRow({ ex, block, onToggleSet, onOpen, onStartRest }: {
           </div>
           {ex.note && <div style={{ fontSize: 11, color: 'var(--d-text-muted)', marginTop: 4 }}>{ex.note}</div>}
         </div>
-        <button
-          onClick={() => {
-            const link = ex.video_url || ex.gif_url;
-            if (link) window.open(link, '_blank', 'noopener,noreferrer');
-            else onOpen();
-          }}
-          style={{ padding: '6px 10px', borderRadius: 8, background: 'var(--vitta-blue)', color: '#fff', border: 'none', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
-        >
-          <PlayIcon size={10}/> Ver
-        </button>
+        {(ex.video_url || ex.gif_url) && (
+          <button
+            onClick={() => window.open((ex.video_url || ex.gif_url)!, '_blank', 'noopener,noreferrer')}
+            style={{ padding: '6px 10px', borderRadius: 8, background: 'var(--vitta-blue)', color: '#fff', border: 'none', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+          >
+            <PlayIcon size={10}/> Ver
+          </button>
+        )}
       </div>
 
       {ex.sets.length > 0 && (
@@ -502,6 +500,19 @@ export default function TodayPage() {
   const [showDetails, setShowDetails] = useState(false);
   const [dateOffset, setDateOffset] = useState(0);
 
+  // Initialize from ?date= query param (set by month view)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const dateParam = params.get('date');
+    if (dateParam) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const paramDate = new Date(dateParam + 'T00:00:00');
+      const diffDays = Math.round((paramDate.getTime() - today.getTime()) / 86400000);
+      setDateOffset(diffDays);
+    }
+  }, []);
+
   // ─── Session timer ─────────────────────────────────────────
   const [timerStart, setTimerStart] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -650,9 +661,23 @@ export default function TodayPage() {
   }
 
   function stopTimer() {
+    const sid = session?.id;
+    const start = timerStart;
     setTimerStart(null);
     setElapsed(0);
-    if (session?.id) localStorage.removeItem(`vitta_timer_${session.id}`);
+    if (sid) {
+      localStorage.removeItem(`vitta_timer_${sid}`);
+      if (start !== null) {
+        const finalSeconds = Math.floor((Date.now() - start) / 1000);
+        if (finalSeconds > 0) {
+          const supabase = createClient();
+          supabase.from('session_feedback').upsert(
+            { session_id: sid, duration_seconds: finalSeconds },
+            { onConflict: 'session_id' }
+          );
+        }
+      }
+    }
   }
 
   async function toggleSet(setId: string, done: boolean) {

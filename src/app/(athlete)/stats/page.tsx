@@ -6,6 +6,93 @@ import { CATEGORIES } from '@/lib/constants';
 import { getCategoryIcon, FlameIcon, TrendIcon } from '@/components/icons';
 import { computeExerciseBests, type BestEntry } from '@/lib/exercise-bests';
 
+// ─── Feedback chart ───────────────────────────────────────────
+
+interface FeedbackPoint {
+  date: string;
+  sleepHours: number | null;
+  energyLevel: number | null;
+  painLevel: string | null;
+}
+
+const PAIN_TO_NUM: Record<string, number> = { ninguno: 0, leve: 3.3, moderado: 6.7, fuerte: 10 };
+
+function FeedbackChart({ points }: { points: FeedbackPoint[] }) {
+  if (points.length < 2) return (
+    <div style={{ padding: '16px 0', textAlign: 'center', fontSize: 12, color: 'var(--d-text-faint)' }}>
+      Completa más sesiones para ver el gráfico.
+    </div>
+  );
+
+  const n = points.length;
+  const W = 300, H = 90;
+  const PAD_T = 8, PAD_B = 22;
+  const plotH = H - PAD_T - PAD_B;
+
+  const xp = (i: number) => n > 1 ? (i / (n - 1)) * W : W / 2;
+  const yp = (v: number) => PAD_T + (1 - Math.max(0, Math.min(10, v)) / 10) * plotH;
+
+  function polyPts(vals: (number | null)[]) {
+    return vals
+      .map((v, i) => v != null ? `${xp(i).toFixed(1)},${yp(v).toFixed(1)}` : null)
+      .filter(Boolean)
+      .join(' ');
+  }
+
+  const sleepPts  = polyPts(points.map(p => p.sleepHours  != null ? (p.sleepHours / 12) * 10 : null));
+  const energyPts = polyPts(points.map(p => p.energyLevel));
+  const painPts   = polyPts(points.map(p => p.painLevel   ? PAIN_TO_NUM[p.painLevel] ?? null : null));
+
+  const labelIdxs = n <= 5
+    ? Array.from({ length: n }, (_, i) => i)
+    : [0, Math.floor(n / 2), n - 1];
+
+  return (
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', display: 'block', overflow: 'visible' }}>
+        {[0.25, 0.5, 0.75].map(t => (
+          <line key={t} x1={0} y1={PAD_T + t * plotH} x2={W} y2={PAD_T + t * plotH}
+            stroke="rgba(255,255,255,0.07)" strokeWidth="0.6"/>
+        ))}
+
+        {sleepPts  && <polyline points={sleepPts}  fill="none" stroke="#4A8AF0" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round"/>}
+        {energyPts && <polyline points={energyPts} fill="none" stroke="#22c55e" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round"/>}
+        {painPts   && <polyline points={painPts}   fill="none" stroke="#f59e0b" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round"/>}
+
+        {points.map((p, i) => (
+          <g key={i}>
+            {p.sleepHours  != null && <circle cx={xp(i)} cy={yp((p.sleepHours / 12) * 10)} r="3" fill="#4A8AF0"/>}
+            {p.energyLevel != null && <circle cx={xp(i)} cy={yp(p.energyLevel)} r="3" fill="#22c55e"/>}
+            {p.painLevel   &&         <circle cx={xp(i)} cy={yp(PAIN_TO_NUM[p.painLevel] ?? 0)} r="3" fill="#f59e0b"/>}
+          </g>
+        ))}
+
+        {labelIdxs.map(i => (
+          <text key={i} x={xp(i)} y={H - 4}
+            textAnchor={i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}
+            fontSize="7.5" fill="rgba(255,255,255,0.35)" fontFamily="monospace"
+          >
+            {points[i].date.slice(5)}
+          </text>
+        ))}
+      </svg>
+
+      <div style={{ display: 'flex', gap: 14, marginTop: 6, flexWrap: 'wrap' }}>
+        {[
+          { color: '#4A8AF0', label: 'Sueño (h/12)' },
+          { color: '#22c55e', label: 'Energía /10' },
+          { color: '#f59e0b', label: 'Dolor' },
+        ].map(l => (
+          <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div style={{ width: 18, height: 2.5, borderRadius: 1.5, background: l.color }}/>
+            <span style={{ fontSize: 10, color: 'var(--d-text-faint)' }}>{l.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 interface StatsData {
   adherence: number | null;
   avgRpe: number | null;
@@ -34,6 +121,8 @@ export default function StatsPage() {
   const [bests, setBests] = useState<BestEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [bestsLoading, setBestsLoading] = useState(true);
+  const [feedbackPoints, setFeedbackPoints] = useState<FeedbackPoint[]>([]);
+  const [feedbackLoading, setFeedbackLoading] = useState(true);
 
   // ── Stats (28d) ────────────────────────────────────────────
   useEffect(() => {
@@ -135,6 +224,36 @@ export default function StatsPage() {
       });
   }, [athleteId, authLoading]);
 
+  // ── Feedback chart data ────────────────────────────────────
+  useEffect(() => {
+    if (authLoading || !athleteId) return;
+    const supabase = createClient();
+    supabase
+      .from('sessions')
+      .select('date, session_feedback(sleep_hours, energy_level, pain_level)')
+      .eq('athlete_id', athleteId)
+      .order('date', { ascending: true })
+      .limit(30)
+      .then(({ data }) => {
+        if (data) {
+          const pts = data
+            .map((s: any) => {
+              const fb = Array.isArray(s.session_feedback) ? s.session_feedback[0] : s.session_feedback;
+              if (!fb || (fb.sleep_hours == null && fb.energy_level == null && fb.pain_level == null)) return null;
+              return {
+                date: s.date as string,
+                sleepHours: fb.sleep_hours as number | null,
+                energyLevel: fb.energy_level as number | null,
+                painLevel: fb.pain_level as string | null,
+              };
+            })
+            .filter(Boolean) as FeedbackPoint[];
+          setFeedbackPoints(pts);
+        }
+        setFeedbackLoading(false);
+      });
+  }, [athleteId, authLoading]);
+
   // ── Bests (all-time) ───────────────────────────────────────
   useEffect(() => {
     if (authLoading || !athleteId) return;
@@ -206,6 +325,17 @@ export default function StatsPage() {
             {kpi.d && <div style={{ fontSize: 11, color: kpi.c, marginTop: 4, fontWeight: 600 }}>{kpi.d}</div>}
           </div>
         ))}
+      </div>
+
+      {/* Feedback / Bienestar chart */}
+      <div style={{ marginTop: 14, background: 'var(--d-surface)', border: '1px solid var(--d-border)', borderRadius: 16, padding: 16 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Bienestar post-sesión</div>
+        <div style={{ fontSize: 10, color: 'var(--d-text-faint)', marginBottom: 12 }}>Sueño · Energía · Dolor — últimas sesiones completadas</div>
+        {feedbackLoading ? (
+          <div style={{ padding: '14px 0', textAlign: 'center', fontSize: 12, color: 'var(--d-text-faint)' }}>Cargando...</div>
+        ) : (
+          <FeedbackChart points={feedbackPoints}/>
+        )}
       </div>
 
       {/* Volume by category */}

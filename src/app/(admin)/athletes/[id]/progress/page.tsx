@@ -6,6 +6,26 @@ import { createClient } from '@/lib/supabase';
 import { computeExerciseBests, type BestEntry } from '@/lib/exercise-bests';
 import { ChevronLeft, TrendIcon } from '@/components/icons';
 
+interface SessionRecord {
+  date: string;
+  title: string;
+  durationSeconds: number | null;
+  sleepHours: number | null;
+  energyLevel: number | null;
+  painLevel: string | null;
+}
+
+function formatDuration(s: number): string {
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem > 0 ? `${h}h ${rem}m` : `${h}h`;
+}
+
+const PAIN_LABEL: Record<string, string> = { ninguno: 'Ninguno', leve: 'Leve', moderado: 'Moderado', fuerte: 'Fuerte' };
+const PAIN_COLOR: Record<string, string> = { ninguno: '#22c55e', leve: '#4A8AF0', moderado: '#f59e0b', fuerte: '#f87171' };
+
 const RANK_COLORS = ['#F5A623', '#9098AE', '#CD7F32'];
 
 function fmtLoad(v: number): string {
@@ -18,6 +38,7 @@ export default function AthleteProgress() {
 
   const [athleteName, setAthleteName] = useState('');
   const [bests, setBests] = useState<BestEntry[]>([]);
+  const [sessionRecords, setSessionRecords] = useState<SessionRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -37,9 +58,30 @@ export default function AthleteProgress() {
           )
         `)
         .eq('athlete_id', athleteId),
-    ]).then(([{ data: ath }, { data: sessions }]) => {
+      supabase
+        .from('sessions')
+        .select('date, title, session_feedback(duration_seconds, sleep_hours, energy_level, pain_level)')
+        .eq('athlete_id', athleteId)
+        .order('date', { ascending: false })
+        .limit(20),
+    ]).then(([{ data: ath }, { data: sessions }, { data: sessFb }]) => {
       if (ath) setAthleteName(ath.name);
       setBests(computeExerciseBests(sessions ?? []));
+      const records: SessionRecord[] = (sessFb ?? [])
+        .map((s: any) => {
+          const fb = Array.isArray(s.session_feedback) ? s.session_feedback[0] : s.session_feedback;
+          if (!fb) return null;
+          return {
+            date: s.date as string,
+            title: s.title as string,
+            durationSeconds: fb.duration_seconds ?? null,
+            sleepHours: fb.sleep_hours ?? null,
+            energyLevel: fb.energy_level ?? null,
+            painLevel: fb.pain_level ?? null,
+          } as SessionRecord;
+        })
+        .filter(Boolean) as SessionRecord[];
+      setSessionRecords(records);
       setLoading(false);
     });
   }, [athleteId]);
@@ -60,6 +102,51 @@ export default function AthleteProgress() {
       </div>
 
       <div style={{ maxWidth: 540, margin: '0 auto', padding: '20px 16px 48px' }}>
+        {/* Session feedback & duration */}
+        {sessionRecords.length > 0 && (
+          <div style={{ marginBottom: 28 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#F4EFE0', marginBottom: 4 }}>Historial de sesiones</div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 14 }}>Duración real · Bienestar post-sesión</div>
+            <div style={{ display: 'grid', gap: 8 }}>
+              {sessionRecords.map((r, i) => (
+                <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '12px 14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#F4EFE0' }}>{r.title}</div>
+                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>
+                        {new Date(r.date + 'T00:00:00').toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' })}
+                      </div>
+                    </div>
+                    {r.durationSeconds != null && (
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: '#4A8AF0', fontFamily: 'var(--font-mono)' }}>{formatDuration(r.durationSeconds)}</div>
+                        <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>duración</div>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {r.sleepHours != null && (
+                      <span style={{ padding: '3px 8px', borderRadius: 5, background: 'rgba(74,138,240,0.15)', border: '1px solid rgba(74,138,240,0.3)', fontSize: 11, color: '#4A8AF0', fontWeight: 600 }}>
+                        💤 {r.sleepHours}h sueño
+                      </span>
+                    )}
+                    {r.energyLevel != null && (
+                      <span style={{ padding: '3px 8px', borderRadius: 5, background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.25)', fontSize: 11, color: '#22c55e', fontWeight: 600 }}>
+                        ⚡ Energía {r.energyLevel}/10
+                      </span>
+                    )}
+                    {r.painLevel && (
+                      <span style={{ padding: '3px 8px', borderRadius: 5, background: `${PAIN_COLOR[r.painLevel]}18`, border: `1px solid ${PAIN_COLOR[r.painLevel]}35`, fontSize: 11, color: PAIN_COLOR[r.painLevel], fontWeight: 600 }}>
+                        {r.painLevel === 'ninguno' ? '✓' : '⚠'} {PAIN_LABEL[r.painLevel] || r.painLevel}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Section header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
           <TrendIcon size={22} stroke="var(--vitta-blue-bright)"/>

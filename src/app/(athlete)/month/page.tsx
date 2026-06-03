@@ -351,14 +351,12 @@ export default function MonthPage() {
                                       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--d-text)' }}>{sessionData.title}</div>
                                       <div style={{ fontSize: 11, color: 'var(--d-text-muted)', marginTop: 2 }}>{sessionData.duration} min</div>
                                     </div>
-                                    {isToday && (
-                                      <button
-                                        onClick={() => router.push('/today')}
-                                        style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: 'var(--vitta-blue)', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
-                                      >
-                                        Ver sesión →
-                                      </button>
-                                    )}
+                                    <button
+                                      onClick={() => router.push(`/today?date=${dateISO}`)}
+                                      style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: 'var(--vitta-blue)', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}
+                                    >
+                                      {isToday ? 'Ver sesión →' : 'Ir al entreno →'}
+                                    </button>
                                   </div>
                                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                                     {sessionData.blocks.map((b, bi) => {
