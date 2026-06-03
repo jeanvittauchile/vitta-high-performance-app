@@ -161,10 +161,14 @@ interface StatsData {
   last21: boolean[];
 }
 
+function localDateISO(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function daysAgoISO(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
+  return localDateISO(d);
 }
 
 const RANK_COLORS = ['#F5A623', '#9098AE', '#CD7F32'];
@@ -187,100 +191,115 @@ export default function StatsPage() {
   // ── Stats (28d) ────────────────────────────────────────────
   useEffect(() => {
     if (authLoading || !athleteId) return;
+    let cancelled = false;
 
-    const supabase = createClient();
-    const fourWeeksAgo = daysAgoISO(28);
-    const todayISO = new Date().toISOString().slice(0, 10);
+    (async () => {
+      const supabase = createClient();
+      const fourWeeksAgo = daysAgoISO(28);
+      const todayISO = localDateISO(new Date());
 
-    supabase
-      .from('sessions')
-      .select(`
-        id, date,
-        session_feedback(duration_seconds),
-        session_blocks (
-          id, category,
-          session_exercises (
-            id,
-            sets ( id, done, rpe_target, actual_rpe )
-          )
-        )
-      `)
-      .eq('athlete_id', athleteId)
-      .gte('date', fourWeeksAgo)
-      .lte('date', todayISO)
-      .order('date')
-      .then(({ data: sessions }) => {
-        if (!sessions || sessions.length === 0) {
-          setStats({ adherence: null, avgRpe: null, totalSessions: 0, doneSessions: 0, streak: 0, catVolume: [], last21: Array(21).fill(false) });
-          setLoading(false);
-          return;
-        }
-
-        function sessionIsCompleted(s: any): boolean {
-          const fb = Array.isArray(s.session_feedback) ? s.session_feedback[0] : s.session_feedback;
-          if (fb?.duration_seconds != null && fb.duration_seconds > 0) return true;
-          return s.session_blocks?.some((b: any) =>
-            b.session_exercises?.some((e: any) =>
-              e.sets?.some((set: any) => set.done)
+      // Run both queries in parallel. The session_feedback query is optional —
+      // if duration_seconds column doesn't exist yet it returns null gracefully.
+      const [{ data: sessions }, { data: feedbackData }] = await Promise.all([
+        supabase
+          .from('sessions')
+          .select(`
+            id, date,
+            session_blocks (
+              id, category,
+              session_exercises (
+                id,
+                sets ( id, done, rpe_target, actual_rpe )
+              )
             )
-          ) ?? false;
-        }
+          `)
+          .eq('athlete_id', athleteId)
+          .gte('date', fourWeeksAgo)
+          .lte('date', todayISO)
+          .order('date'),
+        supabase
+          .from('session_feedback')
+          .select('session_id')
+          .not('duration_seconds', 'is', null),
+      ]);
 
-        const totalSessions = sessions.length;
-        const doneSessions = sessions.filter(sessionIsCompleted).length;
-        const adherence = totalSessions > 0 ? Math.round(doneSessions / totalSessions * 100) : null;
+      if (cancelled) return;
 
-        const sevenDaysAgo = daysAgoISO(7);
-        const rpeValues: number[] = [];
-        sessions.forEach((s: any) => {
-          if (s.date < sevenDaysAgo) return;
-          s.session_blocks?.forEach((b: any) => {
-            b.session_exercises?.forEach((e: any) => {
-              e.sets?.forEach((set: any) => {
-                const v = set.actual_rpe ?? set.rpe_target;
-                if (v != null) rpeValues.push(Number(v));
-              });
+      if (!sessions || sessions.length === 0) {
+        setStats({ adherence: null, avgRpe: null, totalSessions: 0, doneSessions: 0, streak: 0, catVolume: [], last21: Array(21).fill(false) });
+        setLoading(false);
+        return;
+      }
+
+      // Sessions finalized via "Finalizar Sesión" button (duration_seconds saved)
+      const finishedIds = new Set((feedbackData || []).map((f: any) => f.session_id as string));
+
+      function sessionIsCompleted(s: any): boolean {
+        if (finishedIds.has(s.id)) return true;
+        return s.session_blocks?.some((b: any) =>
+          b.session_exercises?.some((e: any) =>
+            e.sets?.some((set: any) => set.done)
+          )
+        ) ?? false;
+      }
+
+      const totalSessions = sessions.length;
+      const doneSessions = sessions.filter(sessionIsCompleted).length;
+      const adherence = totalSessions > 0 ? Math.round(doneSessions / totalSessions * 100) : null;
+
+      const sevenDaysAgo = daysAgoISO(7);
+      const rpeValues: number[] = [];
+      sessions.forEach((s: any) => {
+        if (s.date < sevenDaysAgo) return;
+        s.session_blocks?.forEach((b: any) => {
+          b.session_exercises?.forEach((e: any) => {
+            e.sets?.forEach((set: any) => {
+              const v = set.actual_rpe ?? set.rpe_target;
+              if (v != null) rpeValues.push(Number(v));
             });
           });
         });
-        const avgRpe = rpeValues.length > 0
-          ? Math.round((rpeValues.reduce((a, b) => a + b, 0) / rpeValues.length) * 10) / 10
-          : null;
-
-        const catCounts: Record<string, number> = {};
-        sessions.forEach((s: any) => {
-          s.session_blocks?.forEach((b: any) => {
-            catCounts[b.category] = (catCounts[b.category] || 0) + 1;
-          });
-        });
-        const totalBlocks = Object.values(catCounts).reduce((a, b) => a + b, 0);
-        const catVolume = Object.entries(catCounts)
-          .sort(([, a], [, b]) => b - a)
-          .map(([id, count]) => ({ id, count, pct: totalBlocks > 0 ? Math.round(count / totalBlocks * 100) : 0 }));
-
-        let streak = 0;
-        const sessionDates = new Set(
-          sessions
-            .filter(sessionIsCompleted)
-            .map((s: any) => s.date)
-        );
-        let checkDate = new Date();
-        while (streak < 28) {
-          const iso = checkDate.toISOString().slice(0, 10);
-          if (!sessionDates.has(iso)) break;
-          streak++;
-          checkDate.setDate(checkDate.getDate() - 1);
-        }
-
-        const last21: boolean[] = [];
-        for (let i = 20; i >= 0; i--) {
-          const iso = daysAgoISO(i);
-          last21.push(sessionDates.has(iso));
-        }
-
-        setStats({ adherence, avgRpe, totalSessions, doneSessions, streak, catVolume, last21 });
-        setLoading(false);
       });
+      const avgRpe = rpeValues.length > 0
+        ? Math.round((rpeValues.reduce((a, b) => a + b, 0) / rpeValues.length) * 10) / 10
+        : null;
+
+      const catCounts: Record<string, number> = {};
+      sessions.forEach((s: any) => {
+        s.session_blocks?.forEach((b: any) => {
+          catCounts[b.category] = (catCounts[b.category] || 0) + 1;
+        });
+      });
+      const totalBlocks = Object.values(catCounts).reduce((a, b) => a + b, 0);
+      const catVolume = Object.entries(catCounts)
+        .sort(([, a], [, b]) => b - a)
+        .map(([id, count]) => ({ id, count, pct: totalBlocks > 0 ? Math.round(count / totalBlocks * 100) : 0 }));
+
+      let streak = 0;
+      const sessionDates = new Set(
+        sessions
+          .filter(sessionIsCompleted)
+          .map((s: any) => s.date)
+      );
+      let checkDate = new Date();
+      while (streak < 28) {
+        const iso = localDateISO(checkDate);
+        if (!sessionDates.has(iso)) break;
+        streak++;
+        checkDate.setDate(checkDate.getDate() - 1);
+      }
+
+      const last21: boolean[] = [];
+      for (let i = 20; i >= 0; i--) {
+        const iso = daysAgoISO(i);
+        last21.push(sessionDates.has(iso));
+      }
+
+      setStats({ adherence, avgRpe, totalSessions, doneSessions, streak, catVolume, last21 });
+      setLoading(false);
+    })();
+
+    return () => { cancelled = true; };
   }, [athleteId, authLoading]);
 
   // ── Feedback chart data ────────────────────────────────────
