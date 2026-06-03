@@ -197,10 +197,13 @@ export default function StatsPage() {
       const supabase = createClient();
       const fourWeeksAgo = daysAgoISO(28);
       const todayISO = localDateISO(new Date());
+      const sevenDaysAgo = daysAgoISO(7);
 
-      // Run both queries in parallel. The session_feedback query is optional —
-      // if duration_seconds column doesn't exist yet it returns null gracefully.
-      const [{ data: sessions }, { data: feedbackData }] = await Promise.all([
+      // Query sessions without date filter in DB — filter in JS to avoid any
+      // date-format or timezone mismatch between client and Supabase.
+      // Get session_feedback separately so a missing duration_seconds column
+      // never breaks the main sessions query.
+      const [{ data: allSessions }, { data: feedbackData }] = await Promise.all([
         supabase
           .from('sessions')
           .select(`
@@ -214,25 +217,32 @@ export default function StatsPage() {
             )
           `)
           .eq('athlete_id', athleteId)
-          .gte('date', fourWeeksAgo)
-          .lte('date', todayISO)
-          .order('date'),
+          .order('date', { ascending: false })
+          .limit(120),
         supabase
           .from('session_feedback')
-          .select('session_id')
-          .not('duration_seconds', 'is', null),
+          .select('session_id, duration_seconds'),
       ]);
 
       if (cancelled) return;
 
-      if (!sessions || sessions.length === 0) {
+      // Filter sessions to the 28-day window in JS
+      const sessions = (allSessions || []).filter(
+        (s: any) => s.date >= fourWeeksAgo && s.date <= todayISO
+      );
+
+      if (!allSessions || allSessions.length === 0) {
         setStats({ adherence: null, avgRpe: null, totalSessions: 0, doneSessions: 0, streak: 0, catVolume: [], last21: Array(21).fill(false) });
         setLoading(false);
         return;
       }
 
       // Sessions finalized via "Finalizar Sesión" button (duration_seconds saved)
-      const finishedIds = new Set((feedbackData || []).map((f: any) => f.session_id as string));
+      const finishedIds = new Set(
+        (feedbackData || [])
+          .filter((f: any) => f.duration_seconds != null && Number(f.duration_seconds) >= 0)
+          .map((f: any) => f.session_id as string)
+      );
 
       function sessionIsCompleted(s: any): boolean {
         if (finishedIds.has(s.id)) return true;
@@ -247,7 +257,6 @@ export default function StatsPage() {
       const doneSessions = sessions.filter(sessionIsCompleted).length;
       const adherence = totalSessions > 0 ? Math.round(doneSessions / totalSessions * 100) : null;
 
-      const sevenDaysAgo = daysAgoISO(7);
       const rpeValues: number[] = [];
       sessions.forEach((s: any) => {
         if (s.date < sevenDaysAgo) return;

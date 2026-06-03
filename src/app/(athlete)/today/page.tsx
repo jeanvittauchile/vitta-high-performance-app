@@ -699,16 +699,12 @@ export default function TodayPage() {
     setElapsed(0);
     if (sid) {
       localStorage.removeItem(`vitta_timer_${sid}`);
-      if (start !== null) {
-        const finalSeconds = Math.floor((Date.now() - start) / 1000);
-        if (finalSeconds > 0) {
-          const supabase = createClient();
-          supabase.from('session_feedback').upsert(
-            { session_id: sid, duration_seconds: finalSeconds },
-            { onConflict: 'session_id' }
-          );
-        }
-      }
+      const finalSeconds = start !== null ? Math.floor((Date.now() - start) / 1000) : 0;
+      const supabase = createClient();
+      supabase.from('session_feedback').upsert(
+        { session_id: sid, duration_seconds: finalSeconds },
+        { onConflict: 'session_id' }
+      );
     }
   }
 
