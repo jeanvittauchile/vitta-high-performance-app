@@ -291,6 +291,11 @@ export default function StatsPage() {
           .map((s: any) => s.date)
       );
       let checkDate = new Date();
+      // If today has no training yet, start streak check from yesterday
+      // so the streak stays alive until midnight
+      if (!sessionDates.has(localDateISO(checkDate))) {
+        checkDate.setDate(checkDate.getDate() - 1);
+      }
       while (streak < 28) {
         const iso = localDateISO(checkDate);
         if (!sessionDates.has(iso)) break;
