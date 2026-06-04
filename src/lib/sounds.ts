@@ -32,12 +32,15 @@ export function playSound(type: TimerSound) {
         osc.start(ctx.currentTime); osc.stop(ctx.currentTime + dur);
       });
     } else if (type === 'beep') {
-      const osc = ctx.createOscillator(); const gain = ctx.createGain();
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.type = 'square'; osc.frequency.value = 1000;
-      gain.gain.setValueAtTime(0.25, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
-      osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.25);
+      // triple beep ~0.9s total
+      [0, 0.3, 0.6].forEach(offset => {
+        const osc = ctx.createOscillator(); const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = 'sine'; osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0.35, ctx.currentTime + offset);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.22);
+        osc.start(ctx.currentTime + offset); osc.stop(ctx.currentTime + offset + 0.22);
+      });
     } else if (type === 'silbato') {
       const osc = ctx.createOscillator(); const gain = ctx.createGain();
       osc.connect(gain); gain.connect(ctx.destination);

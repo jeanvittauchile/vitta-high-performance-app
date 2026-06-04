@@ -87,6 +87,9 @@ body {
   --d-text: #0E1936;
   --d-text-muted: #5C6480;
   --d-text-faint: #9098AE;
+  /* Override cream (used as text/icon color) to dark for contrast */
+  --vitta-cream: #0E1936;
+  --vitta-cream-soft: #1B2A57;
 }
 .athlete-root[data-theme="light"] .frost-dark {
   background: rgba(247,245,238,0.90);

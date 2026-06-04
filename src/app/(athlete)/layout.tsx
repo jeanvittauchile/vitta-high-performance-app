@@ -104,7 +104,7 @@ function AthleteLayoutInner({ children }: { children: ReactNode }) {
         position: 'sticky', top: 0, zIndex: 10,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <VittaMark size={30} bg="var(--vitta-cream)" fg="var(--vitta-navy-deep)"/>
+          <VittaMark size={30} bg="#F4EFE0" fg="var(--vitta-navy-deep)"/>
           <div>
             <div style={{ fontSize: 11, color: 'var(--d-text-faint)', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700 }}>
               Hola, {firstName}
