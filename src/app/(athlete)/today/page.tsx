@@ -564,6 +564,7 @@ export default function TodayPage() {
   const fetchSession = useCallback(async (offset: number) => {
     if (!athleteId) { setLoading(false); return; }
     const targetDate = toISODate(offsetToDate(offset));
+    console.log('[fetchSession] offset:', offset, 'targetDate:', targetDate, 'localHour:', new Date().getHours());
     const supabase = createClient();
     const { data } = await supabase
       .from('sessions')
