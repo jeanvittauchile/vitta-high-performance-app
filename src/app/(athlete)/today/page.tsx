@@ -473,6 +473,8 @@ function SessionDetailsSheet({ session, onClose }: { session: SessRow; onClose: 
 
 function offsetToDate(offset: number): Date {
   const d = new Date();
+  // Before noon, still in the previous training day
+  if (d.getHours() < 12) d.setDate(d.getDate() - 1);
   d.setDate(d.getDate() + offset);
   return d;
 }
@@ -534,6 +536,7 @@ export default function TodayPage() {
     const dateParam = params.get('date');
     if (dateParam) {
       const today = new Date();
+      if (today.getHours() < 12) today.setDate(today.getDate() - 1);
       today.setHours(0, 0, 0, 0);
       const paramDate = new Date(dateParam + 'T00:00:00');
       const diffDays = Math.round((paramDate.getTime() - today.getTime()) / 86400000);
