@@ -6,6 +6,7 @@ import { CATEGORIES } from '@/lib/constants';
 import { getCategoryIcon, PlayIcon, InfoIcon, CheckIcon, ChevronDown, XIcon, PauseIcon, TimerIcon } from '@/components/icons';
 import LevelBadge from '@/components/badges/LevelBadge';
 import ExerciseSheet from '@/components/athlete/ExerciseSheet';
+import { playSound, getTimerSound } from '@/lib/sounds';
 import type { SessionExercise, LevelId, CategoryId } from '@/lib/types';
 
 // ─── DB row types ────────────────────────────────────────────
@@ -97,25 +98,6 @@ function parseRest(str: string | null | undefined): number {
 
 interface RestTimerState { targetSecs: number; startedAt: number; }
 
-function playBell() {
-  try {
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    [[880, 0.5, 1.6], [1320, 0.28, 1.0]].forEach(([freq, vol, dur]) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(vol, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + dur);
-    });
-  } catch (_) {}
-}
 
 function RestTimerBar({ timer, onStop }: { timer: RestTimerState; onStop: () => void }) {
   const [elapsed, setElapsed] = useState(() => Math.floor((Date.now() - timer.startedAt) / 1000));
@@ -132,7 +114,7 @@ function RestTimerBar({ timer, onStop }: { timer: RestTimerState; onStop: () => 
   useEffect(() => {
     if (done && timer.targetSecs > 0 && !bellPlayedRef.current) {
       bellPlayedRef.current = true;
-      playBell();
+      playSound(getTimerSound());
     }
   }, [done, timer.targetSecs]);
   const progress = timer.targetSecs > 0 ? Math.min(1, elapsed / timer.targetSecs) : 1;

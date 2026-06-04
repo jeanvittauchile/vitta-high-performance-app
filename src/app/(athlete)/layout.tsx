@@ -3,8 +3,11 @@ import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { AthleteProvider, useAthlete } from '@/lib/athlete-context';
 import { createClient } from '@/lib/supabase';
-import { VittaMark, HomeIcon, CalendarIcon, TrendIcon, UserIcon, LogOutIcon, LockIcon, CheckIcon } from '@/components/icons';
+import { VittaMark, HomeIcon, CalendarIcon, TrendIcon, UserIcon, LogOutIcon, LockIcon, CheckIcon, SunIcon, MoonIcon } from '@/components/icons';
+import { type TimerSound, SOUND_LABELS, TIMER_SOUND_KEY, playSound } from '@/lib/sounds';
 import type { ReactNode } from 'react';
+
+const THEME_KEY = 'vitta_theme';
 
 const TABS = [
   { href: '/today',   label: 'Hoy',     Icon: HomeIcon     },
@@ -12,6 +15,8 @@ const TABS = [
   { href: '/stats',   label: 'Progreso',Icon: TrendIcon    },
   { href: '/profile', label: 'Perfil',  Icon: UserIcon     },
 ];
+
+const SOUNDS: TimerSound[] = ['campana', 'beep', 'silbato', 'silencio'];
 
 function AthleteLayoutInner({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -24,6 +29,26 @@ function AthleteLayoutInner({ children }: { children: ReactNode }) {
   const [pwSaving, setPwSaving]     = useState(false);
   const [pwDone, setPwDone]         = useState(false);
   const [pwError, setPwError]       = useState('');
+
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    if (typeof window === 'undefined') return 'dark';
+    return (localStorage.getItem(THEME_KEY) as 'dark' | 'light') || 'dark';
+  });
+  const [timerSound, setTimerSound] = useState<TimerSound>(() => {
+    if (typeof window === 'undefined') return 'campana';
+    return (localStorage.getItem(TIMER_SOUND_KEY) as TimerSound) || 'campana';
+  });
+
+  function handleTheme(t: 'dark' | 'light') {
+    setTheme(t);
+    localStorage.setItem(THEME_KEY, t);
+  }
+
+  function handleSound(s: TimerSound) {
+    setTimerSound(s);
+    localStorage.setItem(TIMER_SOUND_KEY, s);
+    playSound(s);
+  }
 
   useEffect(() => {
     if (!loading && !athleteId) router.replace('/login');
@@ -67,7 +92,7 @@ function AthleteLayoutInner({ children }: { children: ReactNode }) {
   const avatarText = loading ? '…' : (initials || '?');
 
   return (
-    <div className="athlete-root thin-scroll-dark" style={{
+    <div className="athlete-root thin-scroll-dark" data-theme={theme} style={{
       width: '100%', minHeight: '100vh', maxWidth: 430, margin: '0 auto',
       display: 'flex', flexDirection: 'column', overflow: 'hidden',
     }}>
@@ -100,13 +125,50 @@ function AthleteLayoutInner({ children }: { children: ReactNode }) {
             {menuOpen && (
               <div style={{
                 position: 'absolute', top: 'calc(100% + 8px)', right: 0,
-                width: 200, background: 'var(--d-surface)',
+                width: 224, background: 'var(--d-surface)',
                 border: '1px solid var(--d-border-strong)', borderRadius: 12,
                 overflow: 'hidden', zIndex: 50,
                 boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
               }}>
                 {!showPwForm ? (
                   <>
+                    {/* Theme */}
+                    <div style={{ padding: '10px 12px 8px', borderBottom: '1px solid var(--d-border)' }}>
+                      <div style={{ fontSize: 10, color: 'var(--d-text-faint)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 7 }}>Tema</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                        {(['dark', 'light'] as const).map(t => (
+                          <button key={t} onClick={() => handleTheme(t)} style={{
+                            padding: '6px 0', borderRadius: 7, border: `1px solid ${theme === t ? 'var(--vitta-blue)' : 'var(--d-border-strong)'}`,
+                            background: theme === t ? 'rgba(46,107,214,0.18)' : 'transparent',
+                            color: theme === t ? 'var(--vitta-blue-bright)' : 'var(--d-text-muted)',
+                            fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                          }}>
+                            {t === 'dark' ? <MoonIcon size={12} stroke="currentColor"/> : <SunIcon size={12} stroke="currentColor"/>}
+                            {t === 'dark' ? 'Oscuro' : 'Claro'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Timer sound */}
+                    <div style={{ padding: '10px 12px 8px', borderBottom: '1px solid var(--d-border)' }}>
+                      <div style={{ fontSize: 10, color: 'var(--d-text-faint)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 7 }}>Sonido del timer</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                        {SOUNDS.map(s => (
+                          <button key={s} onClick={() => handleSound(s)} style={{
+                            padding: '6px 0', borderRadius: 7, border: `1px solid ${timerSound === s ? 'var(--vitta-blue)' : 'var(--d-border-strong)'}`,
+                            background: timerSound === s ? 'rgba(46,107,214,0.18)' : 'transparent',
+                            color: timerSound === s ? 'var(--vitta-blue-bright)' : 'var(--d-text-muted)',
+                            fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                          }}>
+                            {SOUND_LABELS[s]}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Account */}
                     <button
                       onClick={() => setShowPwForm(true)}
                       style={{ width: '100%', padding: '11px 14px', border: 'none', background: 'transparent', color: 'var(--d-text)', fontSize: 13, fontFamily: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 9, borderBottom: '1px solid var(--d-border)' }}

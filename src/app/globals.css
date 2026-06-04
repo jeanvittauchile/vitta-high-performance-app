@@ -77,6 +77,24 @@ body {
   font-family: var(--font-body);
 }
 
+/* Athlete light mode */
+.athlete-root[data-theme="light"] {
+  --d-bg: #F7F5EE;
+  --d-surface: #FFFFFF;
+  --d-surface-2: #FBF9F2;
+  --d-border: rgba(14,25,54,0.10);
+  --d-border-strong: rgba(14,25,54,0.20);
+  --d-text: #0E1936;
+  --d-text-muted: #5C6480;
+  --d-text-faint: #9098AE;
+}
+.athlete-root[data-theme="light"] .frost-dark {
+  background: rgba(247,245,238,0.90);
+}
+.athlete-root[data-theme="light"] .thin-scroll-dark::-webkit-scrollbar-thumb {
+  background: rgba(14,25,54,0.15);
+}
+
 /* Scrollbars */
 .thin-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
 .thin-scroll::-webkit-scrollbar-thumb { background: rgba(28,42,87,0.25); border-radius: 3px; }
