@@ -692,19 +692,26 @@ export default function TodayPage() {
     if (session?.id) localStorage.setItem(`vitta_timer_${session.id}`, String(now));
   }
 
-  function stopTimer() {
+  async function stopTimer() {
     const sid = session?.id;
     const start = timerStart;
+    console.log('[stopTimer] sid:', sid, 'start:', start);
     setTimerStart(null);
     setElapsed(0);
     if (sid) {
       localStorage.removeItem(`vitta_timer_${sid}`);
-      const finalSeconds = start !== null ? Math.floor((Date.now() - start) / 1000) : 0;
-      const supabase = createClient();
-      supabase.from('session_feedback').upsert(
-        { session_id: sid, duration_seconds: finalSeconds },
-        { onConflict: 'session_id' }
-      );
+      if (start !== null) {
+        const finalSeconds = Math.floor((Date.now() - start) / 1000);
+        console.log('[stopTimer] finalSeconds:', finalSeconds);
+        if (finalSeconds > 0) {
+          const supabase = createClient();
+          const { error } = await supabase.from('session_feedback').upsert(
+            { session_id: sid, duration_seconds: finalSeconds },
+            { onConflict: 'session_id' }
+          );
+          console.log('[stopTimer] upsert result error:', error);
+        }
+      }
     }
   }
 
