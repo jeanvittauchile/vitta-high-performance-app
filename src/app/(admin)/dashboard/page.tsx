@@ -35,6 +35,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [todaySessions, setTodaySessions] = useState<{ id: string; title: string; duration: number; athlete_name: string }[]>([]);
+  const [completedTodayIds, setCompletedTodayIds] = useState<Set<string>>(new Set());
 
   const fetchAthletes = useCallback(async () => {
     const supabase = createClient();
@@ -77,10 +78,39 @@ export default function DashboardPage() {
     }
   }, []);
 
+  const fetchCompletedToday = useCallback(async () => {
+    const supabase = createClient();
+    const today = new Date().toISOString().slice(0, 10);
+    const { data } = await supabase
+      .from('sessions')
+      .select('athlete_id, session_feedback(id)')
+      .eq('date', today);
+    if (data) {
+      const ids = new Set<string>(
+        data
+          .filter((s: any) => s.session_feedback && s.session_feedback.length > 0)
+          .map((s: any) => s.athlete_id as string)
+      );
+      setCompletedTodayIds(ids);
+    }
+  }, []);
+
   useEffect(() => {
     fetchAthletes();
     fetchTodaySessions();
-  }, [fetchAthletes, fetchTodaySessions]);
+    fetchCompletedToday();
+  }, [fetchAthletes, fetchTodaySessions, fetchCompletedToday]);
+
+  useEffect(() => {
+    const supabase = createClient();
+    const ch = supabase
+      .channel('dashboard-session-feedback')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'session_feedback' }, () => {
+        fetchCompletedToday();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [fetchCompletedToday]);
 
   const peak    = athletes.filter(a => a.status === 'peak').length;
   const onTrack = athletes.filter(a => a.status === 'on-track').length;
@@ -135,13 +165,14 @@ export default function DashboardPage() {
             <table className="vtable">
               <thead>
                 <tr>
-                  <th>Atleta</th><th>Foco principal</th><th>Adherencia</th><th>RPE 7d</th><th>Estado</th><th></th>
+                  <th>Atleta</th><th>Foco principal</th><th>Adherencia · Hoy</th><th>RPE 7d</th><th>Estado</th><th></th>
                 </tr>
               </thead>
               <tbody>
                 {athletes.map(a => {
                   const cat = CATEGORIES[a.focus];
                   const CatIcon = getCategoryIcon(a.focus);
+                  const doneToday = completedTodayIds.has(a.id);
                   return (
                     <tr key={a.id} onClick={() => router.push(`/athletes/${a.id}/planner`)} style={{ cursor: 'pointer' }}>
                       <td>
@@ -160,12 +191,27 @@ export default function DashboardPage() {
                         </span>
                       </td>
                       <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <div style={{ width: 70, height: 6, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
-                            <div style={{ width: `${a.adherence}%`, height: '100%', background: a.adherence >= 85 ? 'var(--green)' : a.adherence >= 70 ? 'var(--amber)' : 'var(--red)' }}/>
+                        {doneToday ? (
+                          <div style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                            padding: '5px 12px', borderRadius: 5,
+                            background: 'var(--green)', color: '#fff',
+                            fontWeight: 700, fontSize: 11, letterSpacing: '0.04em',
+                            boxShadow: '0 0 0 2px #22c55e44',
+                          }}>
+                            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                              <path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                            Sesión completada
                           </div>
-                          <span className="mono tnum" style={{ fontSize: 11 }}>{a.adherence}%</span>
-                        </div>
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ width: 70, height: 6, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
+                              <div style={{ width: `${a.adherence}%`, height: '100%', background: a.adherence >= 85 ? 'var(--green)' : a.adherence >= 70 ? 'var(--amber)' : 'var(--red)' }}/>
+                            </div>
+                            <span className="mono tnum" style={{ fontSize: 11 }}>{a.adherence}%</span>
+                          </div>
+                        )}
                       </td>
                       <td><span className="mono tnum">{a.rpe7}</span></td>
                       <td><StatusPill status={a.status}/></td>
