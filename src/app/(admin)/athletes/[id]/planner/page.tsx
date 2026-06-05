@@ -2024,24 +2024,21 @@ export default function PlannerPage() {
               <div style={{ fontSize: 20, fontWeight: 700 }}>{athlete.name}</div>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button className="btn btn-ghost" onClick={downloadMonthPDF} title="Descargar plan mensual en PDF (una página por semana)">
-              <DownloadIcon size={13}/>Descargar PDF
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <button className="btn btn-ghost" onClick={downloadMonthPDF} title="Descargar plan mensual en PDF">
+              <DownloadIcon size={13}/>PDF
             </button>
-            <button className="btn btn-ghost" onClick={handleDuplicatePrevMonth} disabled={duplicating}>
-              <CopyIcon size={13}/>{duplicating ? 'Copiando...' : 'Duplicar mes anterior'}
+            <button className="btn btn-ghost" onClick={handleDuplicatePrevMonth} disabled={duplicating} title="Duplicar mes anterior">
+              <CopyIcon size={13}/>{duplicating ? 'Copiando...' : 'Duplicar mes'}
             </button>
-            <button className="btn btn-ghost" onClick={() => setShowCopyPlanModal(true)} title="Copiar este plan mensual a otro atleta">
+            <button className="btn btn-ghost" onClick={() => setShowCopyPlanModal(true)} title="Copiar plan a otro atleta">
               <CopyIcon size={13}/>Copiar a atleta
             </button>
-            <button className="btn btn-ghost" onClick={() => setShowTemplateModal(true)}>
-              <LayersIcon size={13}/>Aplicar plantilla
+            <button className="btn btn-ghost" onClick={() => setShowTemplateModal(true)} title="Aplicar plantilla mensual">
+              <LayersIcon size={13}/>Plantilla
             </button>
-            <button className="btn btn-ghost" onClick={handleSaveAsTemplate} title="Guardar el mes actual como plantilla reutilizable">
-              <LayersIcon size={13}/>Guardar como plantilla
-            </button>
-            <button className="btn btn-ghost" onClick={handleDeletePlan}
-              style={{ color: '#D7474B' }}>
+            <div style={{ width: 1, height: 18, background: 'var(--border)', flexShrink: 0 }}/>
+            <button className="btn btn-ghost" onClick={handleDeletePlan} style={{ color: '#D7474B' }}>
               <TrashIcon size={13}/>Eliminar plan
             </button>
             <button className="btn btn-primary"
