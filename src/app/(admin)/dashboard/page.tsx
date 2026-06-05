@@ -3,9 +3,10 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { CATEGORIES } from '@/lib/constants';
-import { getCategoryIcon, PlusIcon, CalendarIcon, FlameIcon, TrendIcon, SparkleIcon, ChevronRight } from '@/components/icons';
+import { getCategoryIcon, PlusIcon, CalendarIcon, FlameIcon, TrendIcon, SparkleIcon, ChevronRight, UserIcon } from '@/components/icons';
 import StatusPill from '@/components/badges/StatusPill';
 import CreateSessionModal from '@/components/admin/CreateSessionModal';
+import AthleteProfileDrawer from '@/components/admin/AthleteProfileDrawer';
 import type { Athlete } from '@/lib/types';
 
 const KPI = ({ label, value, sub, accent }: { label: string; value: string | number; sub: string; accent: string }) => (
@@ -36,6 +37,7 @@ export default function DashboardPage() {
   const [showModal, setShowModal] = useState(false);
   const [todaySessions, setTodaySessions] = useState<{ id: string; title: string; duration: number; athlete_name: string }[]>([]);
   const [completedTodayIds, setCompletedTodayIds] = useState<Set<string>>(new Set());
+  const [selectedAthlete, setSelectedAthlete] = useState<Athlete | null>(null);
 
   const fetchAthletes = useCallback(async () => {
     const supabase = createClient();
@@ -127,6 +129,12 @@ export default function DashboardPage() {
           onCreated={() => { fetchTodaySessions(); }}
         />
       )}
+      {selectedAthlete && (
+        <AthleteProfileDrawer
+          athlete={selectedAthlete}
+          onClose={() => setSelectedAthlete(null)}
+        />
+      )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 20 }}>
         <div>
@@ -215,7 +223,23 @@ export default function DashboardPage() {
                       </td>
                       <td><span className="mono tnum">{a.rpe7}</span></td>
                       <td><StatusPill status={a.status}/></td>
-                      <td><ChevronRight size={14} stroke="var(--text-muted)"/></td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <button
+                            onClick={e => { e.stopPropagation(); setSelectedAthlete(a); }}
+                            title="Ver perfil"
+                            style={{
+                              background: 'var(--surface-2)', border: '1px solid var(--border)',
+                              borderRadius: 6, cursor: 'pointer', padding: '3px 6px',
+                              color: 'var(--text-muted)', display: 'grid', placeItems: 'center',
+                              lineHeight: 0,
+                            }}
+                          >
+                            <UserIcon size={13}/>
+                          </button>
+                          <ChevronRight size={14} stroke="var(--text-muted)"/>
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
