@@ -29,6 +29,11 @@ function AthleteLayoutInner({ children }: { children: ReactNode }) {
   const [pwSaving, setPwSaving]     = useState(false);
   const [pwDone, setPwDone]         = useState(false);
   const [pwError, setPwError]       = useState('');
+  const [bellVolume, setBellVolume] = useState(() => {
+    if (typeof window === 'undefined') return 0.7;
+    const v = localStorage.getItem('vitta_bell_volume');
+    return v !== null ? parseFloat(v) : 0.7;
+  });
 
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     if (typeof window === 'undefined') return 'dark';
@@ -165,6 +170,28 @@ function AthleteLayoutInner({ children }: { children: ReactNode }) {
                             {SOUND_LABELS[s]}
                           </button>
                         ))}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--d-text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                          {bellVolume === 0
+                            ? <><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></>
+                            : <><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></>
+                          }
+                        </svg>
+                        <input
+                          type="range"
+                          min="0" max="1" step="0.05"
+                          value={bellVolume}
+                          onChange={e => {
+                            const v = parseFloat(e.target.value);
+                            setBellVolume(v);
+                            localStorage.setItem('vitta_bell_volume', String(v));
+                          }}
+                          style={{ flex: 1, accentColor: 'var(--vitta-blue)', cursor: 'pointer' }}
+                        />
+                        <span style={{ fontSize: 11, color: 'var(--d-text-faint)', minWidth: 28, textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                          {bellVolume === 0 ? 'Off' : `${Math.round(bellVolume * 100)}%`}
+                        </span>
                       </div>
                     </div>
 
