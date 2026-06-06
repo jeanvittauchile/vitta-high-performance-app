@@ -1413,13 +1413,14 @@ export default function PlannerPage() {
       .from('sessions')
       .select(`id, title, duration, rpe_target, date,
         session_blocks ( id, name, category, color, sort_order,
-          session_exercises ( id, name, level, sort_order,
+          session_exercises ( id, name, level, note, sort_order,
             sets ( id, reps, load, rpe_target, rest, sort_order )
           )
         )`)
       .eq('athlete_id', id)
       .gte('date', toISO(start))
-      .lte('date', toISO(endDate));
+      .lte('date', toISO(endDate))
+      .order('date');
 
     const sessionsByDate = new Map<string, any[]>();
     for (const s of (data || [])) {
@@ -1438,75 +1439,148 @@ export default function PlannerPage() {
     }
 
     const dayNames = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+    const dayNamesFull = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
     const monthLabel = `${MONTH_NAMES[currentMonth - 1]} ${currentYear}`;
     const athleteName = athlete?.name || '';
+
+    const fmt = (val: string | number | null | undefined, suffix = '') =>
+      val != null && val !== '' && val !== '—' ? `${val}${suffix}` : '—';
 
     let html = `<!DOCTYPE html><html><head><meta charset="utf-8">
     <title>Plan ${athleteName} · ${monthLabel}</title>
     <style>
       *{margin:0;padding:0;box-sizing:border-box}
-      body{font-family:Arial,sans-serif;font-size:10px;color:#111;background:#fff}
-      .page{padding:18px 20px;page-break-before:always;min-height:100vh;display:flex;flex-direction:column;gap:12px}
+      body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:10px;color:#111;background:#fff}
+      .page{padding:20px 24px 24px;page-break-before:always}
       .page:first-child{page-break-before:auto}
-      .page-header{display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:10px;border-bottom:2px solid #0E1936}
-      .athlete-name{font-size:17px;font-weight:700;color:#0E1936}
-      .month-sub{font-size:10px;color:#666;margin-top:2px;letter-spacing:.04em;text-transform:uppercase}
-      .week-badge{font-size:13px;font-weight:700;color:#2E6BD6;letter-spacing:-.02em}
-      .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;flex:1}
-      .day{border:1px solid #ddd;border-radius:6px;overflow:hidden;min-height:120px}
-      .day-head{background:#f0f0f0;padding:5px 7px;display:flex;justify-content:space-between;align-items:center}
-      .day-name{font-weight:700;font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:#333}
-      .day-num{font-size:11px;font-weight:700;color:#0E1936}
-      .out-month .day-head{background:#f8f8f8;color:#bbb}
-      .out-month .day-name,.out-month .day-num{color:#ccc}
-      .session{padding:6px 7px}
-      .sess-title{font-weight:700;font-size:9.5px;color:#0E1936;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      .sess-meta{font-size:8px;color:#888;margin-bottom:5px}
-      .block{margin-bottom:5px}
-      .block-label{display:inline-block;font-size:8px;font-weight:700;padding:1px 5px;border-radius:3px;margin-bottom:2px;letter-spacing:.03em}
-      .ex{font-size:8.5px;padding-left:6px;margin:1px 0;line-height:1.3}
-      .ex-name{font-weight:600}
-      .ex-sets{color:#777}
-      .rest{padding:6px 7px;font-size:9px;color:#bbb;font-style:italic}
-      .footer{font-size:8px;color:#aaa;text-align:center;padding-top:6px;border-top:1px solid #eee}
-      @media print{.page{page-break-before:always}.page:first-child{page-break-before:auto}}
+      .page-header{display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:10px;border-bottom:2.5px solid #0E1936;margin-bottom:14px}
+      .athlete-name{font-size:18px;font-weight:800;color:#0E1936;letter-spacing:-.02em}
+      .month-sub{font-size:9.5px;color:#777;margin-top:3px;letter-spacing:.06em;text-transform:uppercase;font-weight:600}
+      .week-badge{font-size:22px;font-weight:800;color:#2E6BD6;letter-spacing:-.03em;line-height:1}
+      .rest-strip{background:#f6f6f6;border:1px solid #e8e8e8;border-radius:6px;padding:7px 12px;font-size:9px;color:#aaa;margin-bottom:10px;letter-spacing:.04em}
+      .rest-strip strong{color:#bbb;text-transform:uppercase;font-size:8px;letter-spacing:.08em;margin-right:6px}
+      .day-card{border:1px solid #ddd;border-radius:8px;overflow:hidden;margin-bottom:10px;page-break-inside:avoid}
+      .day-header{background:#0E1936;color:#fff;padding:8px 14px;display:flex;justify-content:space-between;align-items:center}
+      .day-label{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+      .sess-meta{font-size:9.5px;color:rgba(255,255,255,.75);font-weight:500}
+      .sess-body{padding:10px 14px}
+      .block-wrap{margin-bottom:10px}
+      .block-wrap:last-child{margin-bottom:0}
+      .block-header{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+      .block-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+      .block-name{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}
+      .ex-wrap{margin-bottom:8px;padding-left:14px}
+      .ex-wrap:last-child{margin-bottom:0}
+      .ex-name{font-size:10.5px;font-weight:700;color:#0E1936;margin-bottom:3px}
+      .ex-note{font-size:8.5px;color:#888;font-style:italic;margin-bottom:3px}
+      .sets-table{width:100%;border-collapse:collapse;font-size:9px}
+      .sets-table thead tr{border-bottom:1px solid #e8e8e8}
+      .sets-table th{text-align:left;color:#aaa;font-weight:700;padding:2px 8px 3px 0;letter-spacing:.05em;text-transform:uppercase;font-size:7.5px}
+      .sets-table td{padding:3px 8px 3px 0;color:#333;vertical-align:middle}
+      .sets-table tbody tr:not(:last-child){border-bottom:1px solid #f0f0f0}
+      .set-num{color:#bbb;font-weight:700;width:18px}
+      .val-load{font-weight:700;color:#0E1936}
+      .val-rpe{display:inline-block;background:#2E6BD622;color:#2E6BD6;border-radius:3px;padding:0 4px;font-weight:700}
+      .no-sets{font-size:9px;color:#bbb;font-style:italic;padding-left:0}
+      .footer{font-size:8px;color:#bbb;text-align:center;padding-top:10px;border-top:1px solid #eee;margin-top:4px;letter-spacing:.04em}
+      @media print{
+        .page{page-break-before:always}
+        .page:first-child{page-break-before:auto}
+        .day-card{page-break-inside:avoid}
+      }
     </style></head><body>`;
 
     for (let wi = 0; wi < 4; wi++) {
-      html += `<div class="page"><div class="page-header"><div><div class="athlete-name">${athleteName}</div><div class="month-sub">${monthLabel} · Plan mensual</div></div><div class="week-badge">Semana ${wi + 1}</div></div><div class="grid">`;
+      // collect rest days and training days for this week
+      const trainingDays: { di: number; date: Date; dateISO: string; sessions: any[] }[] = [];
+      const restDayNames: string[] = [];
+
       for (let di = 0; di < 7; di++) {
         const date = cellDate(currentYear, currentMonth, wi, di);
         const dateISO = toISO(date);
-        const inMonth = date.getMonth() + 1 === currentMonth;
         const sessions = sessionsByDate.get(dateISO) || [];
-        const cellTypes = monthPlan[wi]?.[di] || ['REST'];
-        const isAllRest = cellTypes.every(t => t === 'REST');
-        html += `<div class="day${!inMonth ? ' out-month' : ''}"><div class="day-head"><span class="day-name">${dayNames[di]}</span><span class="day-num">${date.getDate()}</span></div>`;
+        const inMonth = date.getMonth() + 1 === currentMonth;
+        if (!inMonth) continue;
         if (sessions.length > 0) {
-          for (const sess of sessions) {
-            html += `<div class="session"><div class="sess-title">${sess.title}</div><div class="sess-meta">${sess.duration}min · RPE ${sess.rpe_target}</div>`;
-            for (const block of sess.session_blocks) {
-              const bc = block.color || '#2E6BD6';
-              html += `<div class="block"><span class="block-label" style="background:${bc}22;color:${bc}">${block.name}</span>`;
-              for (const ex of block.session_exercises) {
-                const firstSet = ex.sets[0];
-                const setsStr = ex.sets.length > 0 ? `${ex.sets.length}×${firstSet?.reps || '—'}${firstSet?.load ? ` ${firstSet.load}kg` : ''}` : '';
-                html += `<div class="ex"><span class="ex-name">${ex.name}</span>${setsStr ? ` <span class="ex-sets">${setsStr}</span>` : ''}</div>`;
+          trainingDays.push({ di, date, dateISO, sessions });
+        } else {
+          restDayNames.push(dayNames[di]);
+        }
+      }
+
+      html += `<div class="page">`;
+      html += `<div class="page-header">
+        <div>
+          <div class="athlete-name">${athleteName}</div>
+          <div class="month-sub">${monthLabel} · Plan de entrenamiento</div>
+        </div>
+        <div class="week-badge">S${wi + 1}</div>
+      </div>`;
+
+      if (restDayNames.length > 0) {
+        html += `<div class="rest-strip"><strong>Descanso</strong>${restDayNames.join(' · ')}</div>`;
+      }
+
+      if (trainingDays.length === 0) {
+        html += `<div style="text-align:center;padding:30px 0;color:#ccc;font-size:11px">Semana de descanso completa</div>`;
+      }
+
+      for (const { di, date, sessions } of trainingDays) {
+        const dateFormatted = `${dayNamesFull[di]} ${date.getDate()} ${MONTH_NAMES[currentMonth - 1].toLowerCase()}`;
+        for (const sess of sessions) {
+          html += `<div class="day-card">
+            <div class="day-header">
+              <span class="day-label">${dateFormatted}</span>
+              <span class="sess-meta">${sess.title} &nbsp;·&nbsp; ${sess.duration} min &nbsp;·&nbsp; RPE objetivo ${sess.rpe_target}</span>
+            </div>
+            <div class="sess-body">`;
+
+          for (const block of sess.session_blocks) {
+            const bc = block.color || '#2E6BD6';
+            html += `<div class="block-wrap">
+              <div class="block-header">
+                <div class="block-dot" style="background:${bc}"></div>
+                <span class="block-name" style="color:${bc}">${block.name}</span>
+              </div>`;
+
+            for (const ex of block.session_exercises) {
+              html += `<div class="ex-wrap">
+                <div class="ex-name">${ex.name}${ex.level ? ` <span style="font-size:8px;color:#aaa;font-weight:500">(${ex.level})</span>` : ''}</div>`;
+              if (ex.note) html += `<div class="ex-note">${ex.note}</div>`;
+
+              if (ex.sets.length === 0) {
+                html += `<div class="no-sets">Sin series registradas</div>`;
+              } else {
+                html += `<table class="sets-table">
+                  <thead><tr>
+                    <th></th><th>Reps</th><th>Carga</th><th>RPE</th><th>Descanso</th>
+                  </tr></thead><tbody>`;
+                ex.sets.forEach((s: any, i: number) => {
+                  const load = s.load && s.load !== '—' ? `<span class="val-load">${s.load} kg</span>` : '<span style="color:#ccc">—</span>';
+                  const rpe = s.rpe_target ? `<span class="val-rpe">${s.rpe_target}</span>` : '<span style="color:#ccc">—</span>';
+                  const rest = fmt(s.rest);
+                  html += `<tr>
+                    <td class="set-num">${i + 1}</td>
+                    <td><strong>${fmt(s.reps)}</strong></td>
+                    <td>${load}</td>
+                    <td>${rpe}</td>
+                    <td style="color:#888">${rest}</td>
+                  </tr>`;
+                });
+                html += `</tbody></table>`;
               }
               html += `</div>`;
             }
             html += `</div>`;
           }
-        } else if (isAllRest) {
-          html += `<div class="rest">Descanso</div>`;
-        } else {
-          const types = cellTypes.filter(t => t !== 'REST');
-          html += `<div class="rest" style="color:#2E6BD6">${types.join(', ')}</div>`;
+          html += `</div></div>`;
         }
-        html += `</div>`;
       }
-      html += `</div><div class="footer">Vitta High Performance · ${athleteName} · ${monthLabel}</div></div>`;
+
+      html += `<div class="footer">Vitta High Performance &nbsp;·&nbsp; ${athleteName} &nbsp;·&nbsp; ${monthLabel}</div>`;
+      html += `</div>`;
     }
+
     html += `</body></html>`;
 
     const win = window.open('', '_blank');
