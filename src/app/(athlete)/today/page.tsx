@@ -6,7 +6,7 @@ import { CATEGORIES } from '@/lib/constants';
 import { getCategoryIcon, PlayIcon, InfoIcon, CheckIcon, ChevronDown, XIcon, PauseIcon, TimerIcon } from '@/components/icons';
 import LevelBadge from '@/components/badges/LevelBadge';
 import ExerciseSheet from '@/components/athlete/ExerciseSheet';
-import { playSound, getTimerSound } from '@/lib/sounds';
+import { playSound, getTimerSound, unlockAudio } from '@/lib/sounds';
 import type { SessionExercise, LevelId, CategoryId } from '@/lib/types';
 
 // ─── DB row types ────────────────────────────────────────────
@@ -266,7 +266,7 @@ function ExerciseRow({ ex, block, onToggleSet, onOpen, onStartRest }: {
                   <ActualInput label="RPE real" value={s.actual_rpe} setId={s.id} field="actual_rpe"/>
                   {parseRest(s.rest) > 0 && (
                     <button
-                      onClick={() => onStartRest(parseRest(s.rest))}
+                      onClick={() => { unlockAudio(); onStartRest(parseRest(s.rest)); }}
                       style={{ gridColumn: '1 / -1', marginTop: 4, padding: '7px 10px', borderRadius: 8, border: '1px solid rgba(43,182,115,0.35)', background: 'rgba(43,182,115,0.10)', color: 'var(--green)', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
                     >
                       <TimerIcon size={12} stroke="currentColor"/> Iniciar descanso · {s.rest}
