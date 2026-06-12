@@ -35,8 +35,7 @@ export default function DashboardPage() {
   const [athletes, setAthletes] = useState<Athlete[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [todaySessions, setTodaySessions] = useState<{ id: string; title: string; duration: number; athlete_name: string }[]>([]);
-  const [completedTodayIds, setCompletedTodayIds] = useState<Set<string>>(new Set());
+  const [todaySessions, setTodaySessions] = useState<{ id: string; title: string; duration: number; athlete_id: string; athlete_name: string; completed: boolean }[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<Athlete | null>(null);
 
   const fetchAthletes = useCallback(async () => {
@@ -67,7 +66,7 @@ export default function DashboardPage() {
     const today = new Date().toISOString().slice(0, 10);
     const { data } = await supabase
       .from('sessions')
-      .select('id, title, duration, athletes(name)')
+      .select('id, title, duration, athlete_id, athletes(name), session_feedback(id)')
       .eq('date', today)
       .order('created_at');
     if (data) {
@@ -75,48 +74,36 @@ export default function DashboardPage() {
         id: s.id,
         title: s.title,
         duration: s.duration,
+        athlete_id: s.athlete_id,
         athlete_name: s.athletes?.name || '—',
+        completed: Array.isArray(s.session_feedback) && s.session_feedback.length > 0,
       })));
-    }
-  }, []);
-
-  const fetchCompletedToday = useCallback(async () => {
-    const supabase = createClient();
-    const today = new Date().toISOString().slice(0, 10);
-    const { data } = await supabase
-      .from('sessions')
-      .select('athlete_id, session_feedback(id)')
-      .eq('date', today);
-    if (data) {
-      const ids = new Set<string>(
-        data
-          .filter((s: any) => s.session_feedback && s.session_feedback.length > 0)
-          .map((s: any) => s.athlete_id as string)
-      );
-      setCompletedTodayIds(ids);
     }
   }, []);
 
   useEffect(() => {
     fetchAthletes();
     fetchTodaySessions();
-    fetchCompletedToday();
-  }, [fetchAthletes, fetchTodaySessions, fetchCompletedToday]);
+  }, [fetchAthletes, fetchTodaySessions]);
 
   useEffect(() => {
     const supabase = createClient();
     const ch = supabase
       .channel('dashboard-session-feedback')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'session_feedback' }, () => {
-        fetchCompletedToday();
+        fetchTodaySessions();
       })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [fetchCompletedToday]);
+  }, [fetchTodaySessions]);
 
   const peak    = athletes.filter(a => a.status === 'peak').length;
   const onTrack = athletes.filter(a => a.status === 'on-track').length;
   const missed  = athletes.filter(a => a.status === 'missed').length;
+
+  const athleteSessionMap = Object.fromEntries(todaySessions.map(s => [s.athlete_id, s.completed ? 'completed' : 'pending'])) as Record<string, 'completed' | 'pending'>;
+  const sessionsDoneCount = todaySessions.filter(s => s.completed).length;
+  const sessionsPendingCount = todaySessions.filter(s => !s.completed).length;
 
   const today = new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -180,7 +167,7 @@ export default function DashboardPage() {
                 {athletes.map(a => {
                   const cat = CATEGORIES[a.focus];
                   const CatIcon = getCategoryIcon(a.focus);
-                  const doneToday = completedTodayIds.has(a.id);
+                  const sessionStatus = athleteSessionMap[a.id] ?? 'none';
                   return (
                     <tr key={a.id} onClick={() => router.push(`/athletes/${a.id}/planner`)} style={{ cursor: 'pointer' }}>
                       <td>
@@ -199,10 +186,10 @@ export default function DashboardPage() {
                         </span>
                       </td>
                       <td>
-                        {doneToday ? (
+                        {sessionStatus === 'completed' ? (
                           <div style={{
                             display: 'inline-flex', alignItems: 'center', gap: 6,
-                            padding: '5px 12px', borderRadius: 5,
+                            padding: '5px 10px', borderRadius: 5,
                             background: 'var(--green)', color: '#fff',
                             fontWeight: 700, fontSize: 11, letterSpacing: '0.04em',
                             boxShadow: '0 0 0 2px #22c55e44',
@@ -210,7 +197,19 @@ export default function DashboardPage() {
                             <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                               <path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
                             </svg>
-                            Sesión completada
+                            Realizada
+                          </div>
+                        ) : sessionStatus === 'pending' ? (
+                          <div style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                            padding: '5px 10px', borderRadius: 5,
+                            background: 'var(--amber)', color: '#fff',
+                            fontWeight: 700, fontSize: 11, letterSpacing: '0.04em',
+                          }}>
+                            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                              <circle cx="5" cy="5" r="3.5" stroke="currentColor" strokeWidth="1.6"/>
+                            </svg>
+                            Pendiente
                           </div>
                         ) : (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -262,10 +261,20 @@ export default function DashboardPage() {
           </div>
 
           <div className="card" style={{ padding: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <div style={{ fontSize: 12, fontWeight: 700 }}>Sesiones de hoy</div>
               <button className="btn btn-ghost btn-sm" onClick={() => setShowModal(true)} style={{ fontSize: 10 }}>+ Crear</button>
             </div>
+            {todaySessions.length > 0 && (
+              <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4, background: '#22c55e18', color: 'var(--green)', fontWeight: 700 }}>
+                  ✓ {sessionsDoneCount} realizadas
+                </span>
+                <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4, background: '#f59e0b18', color: 'var(--amber)', fontWeight: 700 }}>
+                  ○ {sessionsPendingCount} pendientes
+                </span>
+              </div>
+            )}
             {todaySessions.length === 0 ? (
               <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
                 No hay sesiones planificadas para hoy.
@@ -273,9 +282,29 @@ export default function DashboardPage() {
             ) : (
               <div style={{ display: 'grid', gap: 6 }}>
                 {todaySessions.map(s => (
-                  <div key={s.id} style={{ padding: '8px 10px', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-                    <div style={{ fontSize: 12, fontWeight: 600 }}>{s.title}</div>
-                    <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>{s.athlete_name} · {s.duration} min</div>
+                  <div key={s.id} style={{
+                    padding: '8px 10px', borderRadius: 8,
+                    background: s.completed ? '#22c55e08' : 'var(--surface-2)',
+                    border: `1px solid ${s.completed ? '#22c55e33' : 'var(--border)'}`,
+                    display: 'flex', alignItems: 'center', gap: 10,
+                  }}>
+                    <div style={{
+                      width: 20, height: 20, borderRadius: 10, flexShrink: 0,
+                      background: s.completed ? 'var(--green)' : 'var(--border)',
+                      display: 'grid', placeItems: 'center',
+                    }}>
+                      {s.completed ? (
+                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                          <path d="M1.5 5L4 7.5L8.5 2.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      ) : (
+                        <div style={{ width: 6, height: 6, borderRadius: 3, background: 'var(--text-muted)', opacity: 0.4 }}/>
+                      )}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600 }}>{s.title}</div>
+                      <div className="muted" style={{ fontSize: 11, marginTop: 1 }}>{s.athlete_name} · {s.duration} min</div>
+                    </div>
                   </div>
                 ))}
               </div>
