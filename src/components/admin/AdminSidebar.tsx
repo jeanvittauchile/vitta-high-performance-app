@@ -12,7 +12,13 @@ const items = [
   { href: '/library',   label: 'Biblioteca',   Icon: LayersIcon  },
 ];
 
-export default function AdminSidebar() {
+export default function AdminSidebar({
+  isMobileOpen = false,
+  onMobileClose,
+}: {
+  isMobileOpen?: boolean;
+  onMobileClose?: () => void;
+}) {
   const pathname = usePathname();
   const router   = useRouter();
   const menuRef  = useRef<HTMLDivElement>(null);
@@ -72,11 +78,14 @@ export default function AdminSidebar() {
   }
 
   return (
-    <div style={{
-      background: 'var(--vitta-navy-deep)', color: 'var(--vitta-cream)',
-      padding: '20px 14px', display: 'flex', flexDirection: 'column', gap: 4,
-      borderRight: '1px solid var(--border)', height: '100vh',
-    }}>
+    <div
+      className={`admin-sidebar${isMobileOpen ? ' is-open' : ''}`}
+      style={{
+        background: 'var(--vitta-navy-deep)', color: 'var(--vitta-cream)',
+        padding: '20px 14px', display: 'flex', flexDirection: 'column', gap: 4,
+        borderRight: '1px solid var(--border)',
+      }}
+    >
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10,
         padding: '0 6px 14px',
@@ -84,10 +93,20 @@ export default function AdminSidebar() {
         marginBottom: 10,
       }}>
         <VittaMark size={32} bg="var(--vitta-cream)" fg="var(--vitta-navy-deep)"/>
-        <div>
+        <div style={{ flex: 1 }}>
           <div className="display" style={{ fontStyle: 'italic', fontSize: 18, lineHeight: 1, color: 'var(--vitta-cream)' }}>VITTA</div>
           <div style={{ fontSize: 8, letterSpacing: '0.18em', color: 'rgba(244,239,224,0.6)', marginTop: 3 }}>HIGH PERFORMANCE</div>
         </div>
+        <button
+          className="admin-sidebar-close"
+          onClick={onMobileClose}
+          aria-label="Cerrar menú"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+            <line x1="2" y1="2" x2="12" y2="12"/>
+            <line x1="12" y1="2" x2="2" y2="12"/>
+          </svg>
+        </button>
       </div>
 
       <div style={{ fontSize: 9, letterSpacing: '0.12em', color: 'rgba(244,239,224,0.45)', padding: '8px 8px 6px', fontWeight: 700 }}>WORKSPACE</div>

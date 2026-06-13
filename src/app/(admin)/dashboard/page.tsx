@@ -108,7 +108,7 @@ export default function DashboardPage() {
   const today = new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
   return (
-    <div style={{ padding: '24px 28px 36px' }}>
+    <div className="admin-page-pad">
       {showModal && (
         <CreateSessionModal
           athletes={athletes}
@@ -123,7 +123,7 @@ export default function DashboardPage() {
         />
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 20 }}>
+      <div className="admin-page-header" style={{ marginBottom: 20 }}>
         <div>
           <div style={{ fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-muted)' }}>
             {today}
@@ -136,14 +136,14 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+      <div className="admin-kpi-grid">
         <KPI label="Atletas activos"       value={loading ? '...' : athletes.length} sub={`${onTrack} en plan, ${missed} ausentes`} accent="var(--vitta-navy)"/>
         <KPI label="En pico"               value={loading ? '...' : peak}   sub="Esta semana"  accent="var(--vitta-blue)"/>
         <KPI label="Adherencia 7d"         value="—"   sub="Sin datos aún"  accent="var(--green)"/>
         <KPI label="Sesiones hoy"          value={loading ? '...' : todaySessions.length} sub="Planificadas para hoy" accent="var(--amber)"/>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 14 }}>
+      <div className="admin-main-grid">
         <div className="card" style={{ padding: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.04em' }}>Atletas — vista de hoy</div>
@@ -157,7 +157,7 @@ export default function DashboardPage() {
               Aún no hay atletas. <button onClick={() => router.push('/athletes')} style={{ color: 'var(--vitta-blue)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>Crea el primero →</button>
             </div>
           ) : (
-            <table className="vtable">
+            <div className="admin-table-scroll"><table className="vtable">
               <thead>
                 <tr>
                   <th>Atleta</th><th>Foco principal</th><th>Adherencia · Hoy</th><th>RPE 7d</th><th>Estado</th><th></th>
@@ -243,7 +243,7 @@ export default function DashboardPage() {
                   );
                 })}
               </tbody>
-            </table>
+            </table></div>
           )}
         </div>
 

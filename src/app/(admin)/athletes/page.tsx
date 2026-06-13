@@ -50,8 +50,8 @@ export default function AthletesPage() {
     .filter(a => a.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div style={{ padding: '20px 24px 28px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 16 }}>
+    <div className="admin-page-pad">
+      <div className="admin-page-header" style={{ marginBottom: 16 }}>
         <div>
           <div style={{ fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700 }}>
             Workspace · Atletas
@@ -95,7 +95,7 @@ export default function AthletesPage() {
             {athletes.length === 0 ? 'Aún no hay atletas. Crea el primero.' : 'Sin resultados.'}
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+          <div className="admin-athletes-grid">
             {filtered.map(a => {
               const cat = CATEGORIES[a.focus];
               const Ic = getCategoryIcon(a.focus);
