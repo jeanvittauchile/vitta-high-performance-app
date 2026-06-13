@@ -37,6 +37,7 @@ export default function DashboardPage() {
   const [showModal, setShowModal] = useState(false);
   const [todaySessions, setTodaySessions] = useState<{ id: string; title: string; duration: number; athlete_id: string; athlete_name: string; completed: boolean }[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<Athlete | null>(null);
+  const [completedCountMap, setCompletedCountMap] = useState<Record<string, number>>({});
 
   const fetchAthletes = useCallback(async () => {
     const supabase = createClient();
@@ -59,6 +60,18 @@ export default function DashboardPage() {
       })));
     }
     setLoading(false);
+  }, []);
+
+  const fetchCompletedSessionCounts = useCallback(async () => {
+    const supabase = createClient();
+    const { data } = await supabase
+      .from('sessions')
+      .select('athlete_id, session_feedback!inner(id)');
+    if (data) {
+      const counts: Record<string, number> = {};
+      data.forEach((s: any) => { counts[s.athlete_id] = (counts[s.athlete_id] || 0) + 1; });
+      setCompletedCountMap(counts);
+    }
   }, []);
 
   const fetchTodaySessions = useCallback(async () => {
@@ -84,7 +97,8 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchAthletes();
     fetchTodaySessions();
-  }, [fetchAthletes, fetchTodaySessions]);
+    fetchCompletedSessionCounts();
+  }, [fetchAthletes, fetchTodaySessions, fetchCompletedSessionCounts]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -92,10 +106,11 @@ export default function DashboardPage() {
       .channel('dashboard-session-feedback')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'session_feedback' }, () => {
         fetchTodaySessions();
+        fetchCompletedSessionCounts();
       })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [fetchTodaySessions]);
+  }, [fetchTodaySessions, fetchCompletedSessionCounts]);
 
   const peak    = athletes.filter(a => a.status === 'peak').length;
   const onTrack = athletes.filter(a => a.status === 'on-track').length;
@@ -160,7 +175,7 @@ export default function DashboardPage() {
             <div className="admin-table-scroll"><table className="vtable">
               <thead>
                 <tr>
-                  <th>Atleta</th><th>Foco principal</th><th>Adherencia · Hoy</th><th>RPE 7d</th><th>Estado</th><th></th>
+                  <th>Atleta</th><th>Foco principal</th><th>Sesiones ✓</th><th>Adherencia · Hoy</th><th>RPE 7d</th><th>Estado</th><th></th>
                 </tr>
               </thead>
               <tbody>
@@ -168,6 +183,7 @@ export default function DashboardPage() {
                   const cat = CATEGORIES[a.focus];
                   const CatIcon = getCategoryIcon(a.focus);
                   const sessionStatus = athleteSessionMap[a.id] ?? 'none';
+                  const completedCount = completedCountMap[a.id] ?? 0;
                   return (
                     <tr key={a.id} onClick={() => router.push(`/athletes/${a.id}/planner`)} style={{ cursor: 'pointer' }}>
                       <td>
@@ -184,6 +200,23 @@ export default function DashboardPage() {
                           <CatIcon size={11} stroke="currentColor"/>
                           <span style={{ fontSize: 11, fontWeight: 600 }}>{cat?.label}</span>
                         </span>
+                      </td>
+                      <td>
+                        {completedCount > 0 ? (
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 5,
+                            padding: '3px 8px', borderRadius: 4,
+                            background: '#22c55e18', color: 'var(--green)',
+                            fontWeight: 700, fontSize: 11,
+                          }}>
+                            <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
+                              <path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                            {completedCount}
+                          </span>
+                        ) : (
+                          <span className="muted" style={{ fontSize: 11 }}>—</span>
+                        )}
                       </td>
                       <td>
                         {sessionStatus === 'completed' ? (
