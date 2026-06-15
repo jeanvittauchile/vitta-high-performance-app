@@ -175,7 +175,7 @@ export default function DashboardPage() {
             <div className="admin-table-scroll"><table className="vtable">
               <thead>
                 <tr>
-                  <th>Atleta</th><th>Foco principal</th><th>Sesiones ✓</th><th>Adherencia · Hoy</th><th>RPE 7d</th><th>Estado</th><th></th>
+                  <th>Atleta</th><th>Foco principal</th><th>Sesiones ✓</th><th>Hoy</th><th>RPE 7d</th><th>Estado</th><th></th>
                 </tr>
               </thead>
               <tbody>
@@ -245,12 +245,7 @@ export default function DashboardPage() {
                             Pendiente
                           </div>
                         ) : (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <div style={{ width: 70, height: 6, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
-                              <div style={{ width: `${a.adherence}%`, height: '100%', background: a.adherence >= 85 ? 'var(--green)' : a.adherence >= 70 ? 'var(--amber)' : 'var(--red)' }}/>
-                            </div>
-                            <span className="mono tnum" style={{ fontSize: 11 }}>{a.adherence}%</span>
-                          </div>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Sin sesión</span>
                         )}
                       </td>
                       <td><span className="mono tnum">{a.rpe7}</span></td>

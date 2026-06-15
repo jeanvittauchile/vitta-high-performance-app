@@ -41,6 +41,8 @@ export default function AthleteProfileDrawer({ athlete, onClose }: Props) {
   const router = useRouter();
   const [profile, setProfile] = useState<AthleteProfile | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
+  const [completedSessions, setCompletedSessions] = useState<{ date: string; title: string }[]>([]);
+  const [loadingDates, setLoadingDates] = useState(true);
   const cat = CATEGORIES[athlete.focus];
   const CatIcon = getCategoryIcon(athlete.focus);
 
@@ -56,6 +58,30 @@ export default function AthleteProfileDrawer({ athlete, onClose }: Props) {
       .then(({ data }) => {
         setProfile(data ?? null);
         setLoadingProfile(false);
+      });
+  }, [athlete.id]);
+
+  useEffect(() => {
+    const supabase = createClient();
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - 3);
+    const cutoffDate = cutoff.toISOString().slice(0, 10);
+    supabase
+      .from('sessions')
+      .select('date, title, session_feedback(id)')
+      .eq('athlete_id', athlete.id)
+      .gte('date', cutoffDate)
+      .order('date', { ascending: false })
+      .limit(40)
+      .then(({ data }) => {
+        if (data) {
+          setCompletedSessions(
+            data
+              .filter((s: any) => Array.isArray(s.session_feedback) && s.session_feedback.length > 0)
+              .map((s: any) => ({ date: s.date, title: s.title }))
+          );
+        }
+        setLoadingDates(false);
       });
   }, [athlete.id]);
 
@@ -122,30 +148,35 @@ export default function AthleteProfileDrawer({ athlete, onClose }: Props) {
           </div>
         </div>
 
-        {/* métricas */}
+        {/* sesiones completadas */}
         <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
           <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 10 }}>
-            Métricas
+            Sesiones completadas
           </div>
-          <div style={{ display: 'grid', gap: 4 }}>
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Adherencia</span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: athlete.adherence >= 85 ? 'var(--green)' : athlete.adherence >= 70 ? 'var(--amber)' : 'var(--red)' }}>
-                  {athlete.adherence}%
-                </span>
-              </div>
-              <div style={{ height: 6, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
-                <div style={{
-                  width: `${athlete.adherence}%`, height: '100%',
-                  background: athlete.adherence >= 85 ? 'var(--green)' : athlete.adherence >= 70 ? 'var(--amber)' : 'var(--red)',
-                  borderRadius: 3,
-                }}/>
-              </div>
+          {loadingDates ? (
+            <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 10 }}>Cargando...</div>
+          ) : completedSessions.length === 0 ? (
+            <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 10 }}>Sin sesiones completadas aún.</div>
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 10 }}>
+              {completedSessions.map((s, i) => (
+                <div key={i} title={s.title} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  padding: '3px 8px', borderRadius: 4,
+                  background: '#22c55e12', border: '1px solid #22c55e33',
+                  color: 'var(--green)',
+                }}>
+                  <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
+                    <path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  <span style={{ fontSize: 11, fontWeight: 600 }}>
+                    {new Date(s.date + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' })}
+                  </span>
+                </div>
+              ))}
             </div>
-            <div style={{ height: 10 }}/>
-            <Row label="RPE 7d" value={<span className="mono">{athlete.rpe7}</span>}/>
-          </div>
+          )}
+          <Row label="RPE 7d" value={<span className="mono">{athlete.rpe7}</span>}/>
         </div>
 
         {/* perfil deportivo */}
