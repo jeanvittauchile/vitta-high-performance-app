@@ -154,7 +154,7 @@ export default function DashboardPage() {
       <div className="admin-kpi-grid">
         <KPI label="Atletas activos"       value={loading ? '...' : athletes.length} sub={`${onTrack} en plan, ${missed} ausentes`} accent="var(--vitta-navy)"/>
         <KPI label="En pico"               value={loading ? '...' : peak}   sub="Esta semana"  accent="var(--vitta-blue)"/>
-        <KPI label="Adherencia 7d"         value="—"   sub="Sin datos aún"  accent="var(--green)"/>
+        <KPI label="Sesiones completadas"  value={loading ? '...' : Object.values(completedCountMap).reduce((s, n) => s + n, 0)} sub="Total histórico" accent="var(--green)"/>
         <KPI label="Sesiones hoy"          value={loading ? '...' : todaySessions.length} sub="Planificadas para hoy" accent="var(--amber)"/>
       </div>
 
@@ -283,7 +283,7 @@ export default function DashboardPage() {
             </div>
             <div style={{ display: 'grid', gap: 8 }}>
               <Alert icon={<FlameIcon size={14}/>}   color="var(--red)"   title="Sin alertas críticas" sub="Todo en orden por ahora"/>
-              <Alert icon={<TrendIcon size={14}/>}   color="var(--amber)" title="Adherencia pendiente"  sub="Agrega sesiones para ver datos"/>
+              <Alert icon={<TrendIcon size={14}/>}   color="var(--amber)" title="Sin sesiones hoy"      sub="Agrega sesiones para ver actividad"/>
               <Alert icon={<SparkleIcon size={14}/>} color="var(--green)" title="Sistema listo"         sub="Crea atletas y planifica sesiones"/>
             </div>
           </div>

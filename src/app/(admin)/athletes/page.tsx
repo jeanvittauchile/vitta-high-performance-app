@@ -117,7 +117,7 @@ export default function AthletesPage() {
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: cat?.color, fontWeight: 600 }}>
                         <Ic size={11} stroke="currentColor"/>{cat?.label}
                       </span>
-                      <span className="muted">{a.age}a · {a.weeklyHours}h/sem · adh {a.adherence}%</span>
+                      <span className="muted">{a.age}a · {a.weeklyHours}h/sem</span>
                     </div>
                   </div>
                   <ChevronRight size={14} stroke="var(--text-muted)"/>
