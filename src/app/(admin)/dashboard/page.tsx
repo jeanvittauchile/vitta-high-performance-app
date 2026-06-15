@@ -172,7 +172,7 @@ export default function DashboardPage() {
               Aún no hay atletas. <button onClick={() => router.push('/athletes')} style={{ color: 'var(--vitta-blue)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>Crea el primero →</button>
             </div>
           ) : (
-            <div className="admin-table-scroll"><table className="vtable">
+            <div className="admin-table-scroll"><table className="vtable vtable-athletes-list">
               <thead>
                 <tr>
                   <th>Atleta</th><th>Foco principal</th><th>Sesiones ✓</th><th>Hoy</th><th>RPE 7d</th><th>Estado</th><th></th>

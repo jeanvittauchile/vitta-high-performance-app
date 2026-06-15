@@ -94,10 +94,10 @@ export default function NewAthleteModal({ onClose, onCreated }: Props) {
       />
 
       {/* Modal */}
-      <div style={{
+      <div className="admin-modal" style={{
         position: 'fixed', top: '50%', left: '50%',
         transform: 'translate(-50%, -50%)',
-        zIndex: 101, width: '100%', maxWidth: 480,
+        zIndex: 101,
         background: 'var(--surface)',
         border: '1px solid var(--border)',
         borderRadius: 16,

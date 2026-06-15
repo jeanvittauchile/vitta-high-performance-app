@@ -99,7 +99,7 @@ export default function AthleteProfileDrawer({ athlete, onClose }: Props) {
       {/* drawer */}
       <div style={{
         position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 201,
-        width: 340, background: 'var(--surface)', boxShadow: '-4px 0 32px rgba(0,0,0,0.18)',
+        width: 'min(340px, 100vw)', background: 'var(--surface)', boxShadow: '-4px 0 32px rgba(0,0,0,0.18)',
         display: 'flex', flexDirection: 'column', overflowY: 'auto',
       }}>
 

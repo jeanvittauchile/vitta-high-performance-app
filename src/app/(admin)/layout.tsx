@@ -20,7 +20,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div
       className="admin-layout"
       style={{
-        width: '100vw', height: '100vh', overflow: 'hidden',
+        width: '100%', height: '100dvh', overflow: 'hidden',
         display: 'grid',
         background: 'var(--bg)', color: 'var(--text)',
       }}
@@ -31,7 +31,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       <AdminSidebar isMobileOpen={sidebarOpen} onMobileClose={() => setSidebarOpen(false)}/>
 
-      <div className="thin-scroll" style={{ overflow: 'auto', height: '100vh' }}>
+      <div className="thin-scroll" style={{ overflow: 'auto', height: '100dvh' }}>
         <div className="admin-topbar">
           <button
             className="admin-hamburger"

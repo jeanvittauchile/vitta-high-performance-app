@@ -63,7 +63,7 @@ export default function CreateSessionModal({ athletes, onClose, onCreated }: Pro
         display: 'grid', placeItems: 'center',
       }}
     >
-      <div className="card" style={{ width: 480, padding: 28 }}>
+      <div className="card admin-modal" style={{ padding: 28 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
           <div style={{ fontSize: 16, fontWeight: 700 }}>Nueva sesión</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 22, lineHeight: 1, padding: '0 4px' }}>×</button>
