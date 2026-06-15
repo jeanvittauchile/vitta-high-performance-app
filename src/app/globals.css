@@ -320,4 +320,11 @@ body {
 
   /* Modal: tighter padding on small screens */
   .admin-modal { padding: 20px 16px !important; }
+
+  /* Planner: ocultar panel de ejercicios en móvil */
+  .planner-layout { grid-template-columns: 1fr !important; }
+  .planner-sidebar { display: none !important; }
+  .planner-main { padding: 12px 14px 24px !important; }
+  .planner-header-actions { overflow-x: auto; flex-shrink: 0; }
+  .planner-header-actions .btn { white-space: nowrap; flex-shrink: 0; }
 }

@@ -1984,7 +1984,7 @@ export default function PlannerPage() {
   if (!athlete) return <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: 'var(--text-muted)', fontSize: 14 }}>Atleta no encontrado.</div>;
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', height: '100vh' }}>
+    <div className="planner-layout" style={{ display: 'grid', gridTemplateColumns: '1fr 380px', height: '100dvh' }}>
       {showNewSession && selectedDate && (
         <NewSessionModal date={selectedDate} athleteId={id} onClose={() => setShowNewSession(false)}
           onCreated={session => {
@@ -2087,7 +2087,7 @@ export default function PlannerPage() {
       )}
 
       {/* ─── Main area ──────────────────────────────────────── */}
-      <div className="thin-scroll" style={{ overflow: 'auto', padding: '20px 24px 28px' }}>
+      <div className="thin-scroll planner-main" style={{ overflow: 'auto', padding: '20px 24px 28px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ width: 44, height: 44, borderRadius: 22, background: athlete.color || focusCat.color, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 14, fontWeight: 700 }}>
@@ -2098,7 +2098,7 @@ export default function PlannerPage() {
               <div style={{ fontSize: 20, fontWeight: 700 }}>{athlete.name}</div>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <div className="planner-header-actions" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             <button className="btn btn-ghost" onClick={downloadMonthPDF} title="Descargar plan mensual en PDF">
               <DownloadIcon size={13}/>PDF
             </button>
@@ -2598,7 +2598,7 @@ export default function PlannerPage() {
       </div>
 
       {/* ─── Suggestion panel ───────────────────────────────── */}
-      <div style={{ background: 'var(--surface)', borderLeft: '1px solid var(--border)', padding: '20px 18px', overflow: 'auto' }}>
+      <div className="planner-sidebar" style={{ background: 'var(--surface)', borderLeft: '1px solid var(--border)', padding: '20px 18px', overflow: 'auto' }}>
         {/* Progress: exercise bests */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <TrendIcon size={16} stroke="var(--vitta-blue-bright)"/>
