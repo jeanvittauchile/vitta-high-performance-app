@@ -9,6 +9,14 @@ import CreateSessionModal from '@/components/admin/CreateSessionModal';
 import AthleteProfileDrawer from '@/components/admin/AthleteProfileDrawer';
 import type { Athlete } from '@/lib/types';
 
+const PAIN_COLOR: Record<string, string> = { ninguno: '#22c55e', leve: '#4A8AF0', moderado: '#f59e0b', fuerte: '#f87171' };
+const PAIN_LABEL: Record<string, string> = { ninguno: 'Sin dolor', leve: 'Leve', moderado: 'Moderado', fuerte: 'Fuerte' };
+
+function fmtDuration(s: number): string {
+  const m = Math.floor(s / 60);
+  return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60 > 0 ? `${m % 60}m` : ''}`.trim();
+}
+
 const KPI = ({ label, value, sub, accent }: { label: string; value: string | number; sub: string; accent: string }) => (
   <div className="card" style={{ padding: '14px 16px', borderTop: `2px solid ${accent}` }}>
     <div className="muted" style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700 }}>{label}</div>
@@ -35,7 +43,7 @@ export default function DashboardPage() {
   const [athletes, setAthletes] = useState<Athlete[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [todaySessions, setTodaySessions] = useState<{ id: string; title: string; duration: number; athlete_id: string; athlete_name: string; completed: boolean }[]>([]);
+  const [todaySessions, setTodaySessions] = useState<{ id: string; title: string; duration: number; athlete_id: string; athlete_name: string; completed: boolean; energy_level: number | null; pain_level: string | null; duration_seconds: number | null }[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<Athlete | null>(null);
   const [completedCountMap, setCompletedCountMap] = useState<Record<string, number>>({});
 
@@ -79,18 +87,24 @@ export default function DashboardPage() {
     const today = new Date().toISOString().slice(0, 10);
     const { data } = await supabase
       .from('sessions')
-      .select('id, title, duration, athlete_id, athletes(name), session_feedback(id)')
+      .select('id, title, duration, athlete_id, athletes(name), session_feedback(id, energy_level, pain_level, duration_seconds)')
       .eq('date', today)
       .order('created_at');
     if (data) {
-      setTodaySessions(data.map((s: any) => ({
-        id: s.id,
-        title: s.title,
-        duration: s.duration,
-        athlete_id: s.athlete_id,
-        athlete_name: s.athletes?.name || '—',
-        completed: Array.isArray(s.session_feedback) && s.session_feedback.length > 0,
-      })));
+      setTodaySessions(data.map((s: any) => {
+        const fb = Array.isArray(s.session_feedback) ? s.session_feedback[0] : s.session_feedback;
+        return {
+          id: s.id,
+          title: s.title,
+          duration: s.duration,
+          athlete_id: s.athlete_id,
+          athlete_name: s.athletes?.name || '—',
+          completed: !!fb,
+          energy_level: fb?.energy_level ?? null,
+          pain_level: fb?.pain_level ?? null,
+          duration_seconds: fb?.duration_seconds ?? null,
+        };
+      }));
     }
   }, []);
 
@@ -329,9 +343,30 @@ export default function DashboardPage() {
                         <div style={{ width: 6, height: 6, borderRadius: 3, background: 'var(--text-muted)', opacity: 0.4 }}/>
                       )}
                     </div>
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 12, fontWeight: 600 }}>{s.title}</div>
-                      <div className="muted" style={{ fontSize: 11, marginTop: 1 }}>{s.athlete_name} · {s.duration} min</div>
+                      <div className="muted" style={{ fontSize: 11, marginTop: 1 }}>
+                        {s.athlete_name} · {s.completed && s.duration_seconds ? fmtDuration(s.duration_seconds) : `${s.duration} min`}
+                      </div>
+                      {s.completed && (s.energy_level != null || s.pain_level) && (
+                        <div style={{ display: 'flex', gap: 5, marginTop: 5, flexWrap: 'wrap' }}>
+                          {s.energy_level != null && (
+                            <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: 'rgba(34,197,94,0.12)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.22)' }}>
+                              ⚡ {s.energy_level}/10
+                            </span>
+                          )}
+                          {s.pain_level && s.pain_level !== 'ninguno' && (
+                            <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: `${PAIN_COLOR[s.pain_level] || '#fff'}15`, color: PAIN_COLOR[s.pain_level] || '#fff', border: `1px solid ${PAIN_COLOR[s.pain_level] || '#fff'}30` }}>
+                              ⚠ {PAIN_LABEL[s.pain_level] || s.pain_level}
+                            </span>
+                          )}
+                          {s.pain_level === 'ninguno' && (
+                            <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: 'rgba(34,197,94,0.08)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.18)' }}>
+                              ✓ Sin dolor
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}

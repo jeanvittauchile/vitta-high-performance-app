@@ -8,10 +8,38 @@ import { getCategoryIcon, ChevronLeft, ChevronDown, CheckIcon } from '@/componen
 import LevelBadge from '@/components/badges/LevelBadge';
 import type { CategoryId, LevelId } from '@/lib/types';
 
-interface SetRow { id: string; reps: string | null; load: number | null; rpe_target: number | null; rest: string | null; done: boolean; sort_order: number; }
+interface SetRow {
+  id: string;
+  reps: string | null;
+  load: number | null;
+  rpe_target: number | null;
+  rest: string | null;
+  done: boolean;
+  sort_order: number;
+  actual_reps: number | null;
+  actual_load: number | null;
+  actual_rpe: number | null;
+}
 interface ExRow  { id: string; name: string; level: string | null; note: string | null; sort_order: number; sets: SetRow[]; }
 interface BlRow  { id: string; name: string; category: CategoryId; color: string | null; sort_order: number; session_exercises: ExRow[]; }
 interface SessRow { id: string; title: string; duration: number; rpe_target: number; session_blocks: BlRow[]; }
+interface SessionFeedback {
+  duration_seconds: number | null;
+  sleep_hours: number | null;
+  energy_level: number | null;
+  pain_level: string | null;
+}
+
+const PAIN_LABEL: Record<string, string> = { ninguno: 'Ninguno', leve: 'Leve', moderado: 'Moderado', fuerte: 'Fuerte' };
+const PAIN_COLOR: Record<string, string> = { ninguno: '#22c55e', leve: '#4A8AF0', moderado: '#f59e0b', fuerte: '#f87171' };
+
+function formatDuration(s: number): string {
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem > 0 ? `${h}h ${rem}m` : `${h}h`;
+}
 
 function toISO(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -37,7 +65,9 @@ function BlockCard({ block, index }: { block: BlRow; index: number }) {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', fontFamily: 'var(--font-mono)' }}>{doneSets}/{totalSets}</span>
+          <span style={{ fontSize: 12, color: doneSets === totalSets && totalSets > 0 ? '#2BB673' : 'rgba(255,255,255,0.45)', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
+            {doneSets}/{totalSets}
+          </span>
           <ChevronDown size={16} style={{ transform: expanded ? 'rotate(0)' : 'rotate(-90deg)', transition: 'transform 0.2s', color: 'rgba(255,255,255,0.4)' }}/>
         </div>
       </button>
@@ -47,7 +77,7 @@ function BlockCard({ block, index }: { block: BlRow; index: number }) {
           {block.session_exercises.map((ex, idx) => {
             const allDone = ex.sets.length > 0 && ex.sets.every(s => s.done);
             return (
-              <div key={ex.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, overflow: 'hidden', opacity: allDone ? 0.6 : 1 }}>
+              <div key={ex.id} style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${allDone ? 'rgba(43,182,115,0.20)' : 'rgba(255,255,255,0.07)'}`, borderRadius: 12, overflow: 'hidden' }}>
                 <div style={{ padding: '12px 12px 8px', display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
                     {String.fromCharCode(65 + index)}{idx + 1}
@@ -59,21 +89,50 @@ function BlockCard({ block, index }: { block: BlRow; index: number }) {
                     </div>
                     {ex.note && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>{ex.note}</div>}
                   </div>
+                  {allDone && (
+                    <div style={{ width: 22, height: 22, borderRadius: 11, background: '#2BB673', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                      <CheckIcon size={12} stroke="white" strokeWidth={3}/>
+                    </div>
+                  )}
                 </div>
                 {ex.sets.length > 0 && (
                   <div style={{ padding: '0 8px 8px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '28px 60px 1fr 60px 24px', gap: 8, padding: '5px 8px', fontSize: 9, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700 }}>
-                      <div>SET</div><div>REPS</div><div>CARGA</div><div>RPE</div><div/>
+                    {/* Header */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '26px 1fr 1fr 1fr 26px', gap: 6, padding: '4px 8px', fontSize: 9, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700 }}>
+                      <div>#</div>
+                      <div>Reps</div>
+                      <div>Carga</div>
+                      <div>RPE</div>
+                      <div/>
                     </div>
                     {ex.sets.map((s, si) => (
-                      <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '28px 60px 1fr 60px 24px', gap: 8, padding: '8px 8px', alignItems: 'center', borderRadius: 8, background: s.done ? 'rgba(43,182,115,0.10)' : 'transparent' }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: s.done ? '#2BB673' : '#F4EFE0', fontFamily: 'var(--font-mono)' }}>{si + 1}</div>
-                        <div style={{ fontSize: 13, color: '#F4EFE0', fontFamily: 'var(--font-mono)' }}>{s.reps || '—'}</div>
-                        <div style={{ fontSize: 13, color: '#F4EFE0', fontFamily: 'var(--font-mono)' }}>{s.load != null ? `${s.load} kg` : '—'}</div>
-                        <div style={{ fontSize: 12, color: s.rpe_target ? '#F5A623' : 'rgba(255,255,255,0.3)', fontFamily: 'var(--font-mono)' }}>{s.rpe_target ?? '—'}</div>
-                        <div style={{ width: 22, height: 22, borderRadius: 11, border: `1.5px solid ${s.done ? '#2BB673' : 'rgba(255,255,255,0.25)'}`, background: s.done ? '#2BB673' : 'transparent', display: 'grid', placeItems: 'center' }}>
-                          {s.done && <CheckIcon size={12} stroke="white" strokeWidth={3}/>}
+                      <div key={s.id} style={{ borderRadius: 8, marginBottom: 3, background: s.done ? 'rgba(43,182,115,0.10)' : 'transparent', border: s.done ? '1px solid rgba(43,182,115,0.18)' : '1px solid transparent' }}>
+                        {/* Planned row */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '26px 1fr 1fr 1fr 26px', gap: 6, padding: '7px 8px', alignItems: 'center' }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: s.done ? '#2BB673' : 'rgba(255,255,255,0.4)', fontFamily: 'var(--font-mono)' }}>{si + 1}</div>
+                          <div style={{ fontSize: 13, color: '#F4EFE0', fontFamily: 'var(--font-mono)' }}>{s.reps || '—'}</div>
+                          <div style={{ fontSize: 13, color: '#F4EFE0', fontFamily: 'var(--font-mono)' }}>{s.load != null ? `${s.load} kg` : '—'}</div>
+                          <div style={{ fontSize: 12, color: s.rpe_target ? '#F5A623' : 'rgba(255,255,255,0.3)', fontFamily: 'var(--font-mono)' }}>{s.rpe_target ?? '—'}</div>
+                          <div style={{ width: 22, height: 22, borderRadius: 11, border: `1.5px solid ${s.done ? '#2BB673' : 'rgba(255,255,255,0.25)'}`, background: s.done ? '#2BB673' : 'transparent', display: 'grid', placeItems: 'center' }}>
+                            {s.done && <CheckIcon size={12} stroke="white" strokeWidth={3}/>}
+                          </div>
                         </div>
+                        {/* Actual values row — shown when done and at least one actual value exists */}
+                        {s.done && (s.actual_reps != null || s.actual_load != null || s.actual_rpe != null) && (
+                          <div style={{ display: 'grid', gridTemplateColumns: '26px 1fr 1fr 1fr 26px', gap: 6, padding: '4px 8px 7px', alignItems: 'center', borderTop: '1px dashed rgba(43,182,115,0.20)' }}>
+                            <div style={{ fontSize: 9, color: 'rgba(43,182,115,0.6)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>real</div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: '#2BB673', fontFamily: 'var(--font-mono)' }}>
+                              {s.actual_reps != null ? s.actual_reps : <span style={{ color: 'rgba(255,255,255,0.2)' }}>—</span>}
+                            </div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: '#2BB673', fontFamily: 'var(--font-mono)' }}>
+                              {s.actual_load != null ? `${s.actual_load} kg` : <span style={{ color: 'rgba(255,255,255,0.2)' }}>—</span>}
+                            </div>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: '#F5A623', fontFamily: 'var(--font-mono)' }}>
+                              {s.actual_rpe != null ? s.actual_rpe : <span style={{ color: 'rgba(255,255,255,0.2)' }}>—</span>}
+                            </div>
+                            <div/>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -102,6 +161,7 @@ export default function AthleteToday() {
   const targetDate = dateParam || toISO(new Date());
 
   const [session, setSession] = useState<SessRow | null>(null);
+  const [feedback, setFeedback] = useState<SessionFeedback | null>(null);
   const [athleteName, setAthleteName] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -119,7 +179,7 @@ export default function AthleteToday() {
             id, name, category, color, sort_order,
             session_exercises (
               id, name, level, note, sort_order,
-              sets ( id, reps, load, rpe_target, rest, done, sort_order )
+              sets ( id, reps, load, rpe_target, rest, done, actual_reps, actual_load, actual_rpe, sort_order )
             )
           )
         `)
@@ -128,10 +188,10 @@ export default function AthleteToday() {
         .order('created_at')
         .limit(1)
         .maybeSingle(),
-    ]).then(([{ data: ath }, { data: sess }]) => {
+    ]).then(async ([{ data: ath }, { data: sess }]) => {
       if (ath) setAthleteName(ath.name);
       if (sess) {
-        setSession({
+        const built: SessRow = {
           ...sess,
           session_blocks: (sess.session_blocks || [])
             .sort((a: any, b: any) => a.sort_order - b.sort_order)
@@ -144,7 +204,16 @@ export default function AthleteToday() {
                   sets: (ex.sets || []).sort((a: any, b: any) => a.sort_order - b.sort_order),
                 })),
             })),
-        });
+        };
+        setSession(built);
+
+        // Fetch feedback for this session
+        const { data: fb } = await supabase
+          .from('session_feedback')
+          .select('duration_seconds, sleep_hours, energy_level, pain_level')
+          .eq('session_id', sess.id)
+          .maybeSingle();
+        if (fb) setFeedback(fb as SessionFeedback);
       }
       setLoading(false);
     });
@@ -156,6 +225,7 @@ export default function AthleteToday() {
 
   const totalSets = session?.session_blocks.reduce((s, b) => s + b.session_exercises.reduce((s2, e) => s2 + e.sets.length, 0), 0) ?? 0;
   const doneSets  = session?.session_blocks.reduce((s, b) => s + b.session_exercises.reduce((s2, e) => s2 + e.sets.filter(st => st.done).length, 0), 0) ?? 0;
+  const sessionCompleted = doneSets > 0 && doneSets === totalSets;
 
   return (
     <div style={{ minHeight: '100vh', background: '#0E1936' }}>
@@ -202,11 +272,16 @@ export default function AthleteToday() {
                       </span>
                     );
                   })}
+                {sessionCompleted && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 5, background: 'rgba(43,182,115,0.25)', color: '#2BB673', fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', border: '1px solid rgba(43,182,115,0.4)' }}>
+                    ✓ COMPLETADA
+                  </span>
+                )}
               </div>
               <div style={{ fontSize: 24, fontWeight: 700, margin: '8px 0 14px', color: '#F4EFE0' }}>{session.title}</div>
               <div style={{ display: 'flex', gap: 18 }}>
                 {[
-                  { label: 'Duración', value: `${session.duration}'` },
+                  { label: 'Duración', value: feedback?.duration_seconds ? formatDuration(feedback.duration_seconds) : `${session.duration}'` },
                   { label: 'RPE',      value: session.rpe_target },
                   { label: 'Series',   value: `${doneSets}/${totalSets}` },
                 ].map(s => (
@@ -217,6 +292,37 @@ export default function AthleteToday() {
                 ))}
               </div>
             </div>
+
+            {/* Feedback card — shown when session has feedback */}
+            {feedback && (
+              <div style={{ marginBottom: 14, padding: '12px 14px', borderRadius: 14, background: 'rgba(43,182,115,0.08)', border: '1px solid rgba(43,182,115,0.22)' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(43,182,115,0.8)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+                  Sensaciones post-sesión
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {feedback.duration_seconds != null && (
+                    <span style={{ padding: '4px 10px', borderRadius: 6, background: 'rgba(74,138,240,0.15)', border: '1px solid rgba(74,138,240,0.3)', fontSize: 12, color: '#4A8AF0', fontWeight: 700 }}>
+                      ⏱ {formatDuration(feedback.duration_seconds)}
+                    </span>
+                  )}
+                  {feedback.sleep_hours != null && (
+                    <span style={{ padding: '4px 10px', borderRadius: 6, background: 'rgba(74,138,240,0.12)', border: '1px solid rgba(74,138,240,0.25)', fontSize: 12, color: '#4A8AF0', fontWeight: 700 }}>
+                      💤 {feedback.sleep_hours}h sueño
+                    </span>
+                  )}
+                  {feedback.energy_level != null && (
+                    <span style={{ padding: '4px 10px', borderRadius: 6, background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.25)', fontSize: 12, color: '#22c55e', fontWeight: 700 }}>
+                      ⚡ Energía {feedback.energy_level}/10
+                    </span>
+                  )}
+                  {feedback.pain_level && (
+                    <span style={{ padding: '4px 10px', borderRadius: 6, background: `${PAIN_COLOR[feedback.pain_level] || '#fff'}15`, border: `1px solid ${PAIN_COLOR[feedback.pain_level] || '#fff'}30`, fontSize: 12, color: PAIN_COLOR[feedback.pain_level] || '#fff', fontWeight: 700 }}>
+                      {feedback.pain_level === 'ninguno' ? '✓' : '⚠'} {PAIN_LABEL[feedback.pain_level] || feedback.pain_level}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Blocks */}
             <div style={{ display: 'grid', gap: 14 }}>

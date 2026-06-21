@@ -184,7 +184,7 @@ function ActualInput({ label, value, setId, field }: {
     <div>
       <div style={{ fontSize: 9, color: 'var(--d-text-faint)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.06em', marginBottom: 3 }}>{label}</div>
       <input
-        type="number"
+        type="text"
         inputMode="decimal"
         value={v}
         onChange={e => setV(e.target.value)}
