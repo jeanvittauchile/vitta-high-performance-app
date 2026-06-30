@@ -1547,7 +1547,7 @@ export default function PlannerPage() {
             for (const ex of block.session_exercises) {
               html += `<div class="ex-wrap">
                 <div class="ex-name">${ex.name}${ex.level ? ` <span style="font-size:8px;color:#aaa;font-weight:500">(${ex.level})</span>` : ''}</div>`;
-              if (ex.note) html += `<div class="ex-note">${ex.note}</div>`;
+              if (ex.note) html += `<div style="font-size:9px;color:#444;font-style:italic;margin:2px 0 4px"><span style="font-style:normal;font-weight:700;color:#888;margin-right:4px">Nota:</span>${ex.note}</div>`;
 
               if (ex.sets.length === 0) {
                 html += `<div class="no-sets">Sin series registradas</div>`;
@@ -1671,7 +1671,8 @@ export default function PlannerPage() {
   async function updateExerciseNote(exerciseId: string, blockId: string, note: string) {
     const value = note.trim() || null;
     const supabase = createClient();
-    await supabase.from('session_exercises').update({ note: value }).eq('id', exerciseId);
+    const { error } = await supabase.from('session_exercises').update({ note: value }).eq('id', exerciseId);
+    if (error) { console.error('Error saving note:', error); return; }
     setDaySessions(prev => prev.map(s => ({
       ...s,
       session_blocks: s.session_blocks.map(b =>
