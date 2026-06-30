@@ -1236,6 +1236,7 @@ export default function PlannerPage() {
   const [doneBlocks, setDoneBlocks] = useState<Set<string>>(new Set());
   const [collapsedBlocks, setCollapsedBlocks] = useState<Set<string>>(new Set());
   const [duplicating, setDuplicating] = useState(false);
+  const [dupMsg, setDupMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [applyingTemplate, setApplyingTemplate] = useState(false);
   const [copyingSession, setCopyingSession] = useState<DbSession | null>(null);
@@ -1809,23 +1810,28 @@ export default function PlannerPage() {
   // ── Duplicate previous month plan ─────────────────────────
   async function handleDuplicatePrevMonth() {
     setDuplicating(true);
+    setDupMsg(null);
     const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
     const prevMonthNum = currentMonth === 1 ? 12 : currentMonth - 1;
+    console.log('[duplicar] buscando plan', prevMonthNum, prevYear, 'para atleta', id);
     try {
       const supabase = createClient();
       const { data, error } = await supabase.from('month_plans').select('plan')
         .eq('athlete_id', id).eq('year', prevYear).eq('month', prevMonthNum).maybeSingle();
+      console.log('[duplicar] resultado:', { data, error });
       if (error) throw error;
       if (!data?.plan) {
-        alert(`No hay plan guardado para ${MONTH_NAMES[prevMonthNum - 1]} ${prevYear}.`);
+        setDupMsg({ type: 'err', text: `No hay plan guardado para ${MONTH_NAMES[prevMonthNum - 1]} ${prevYear}.` });
         return;
       }
       const plan = normalizePlan(data.plan);
       await savePlan(plan);
       setMonthPlan(plan);
+      setDupMsg({ type: 'ok', text: `Plan de ${MONTH_NAMES[prevMonthNum - 1]} duplicado correctamente.` });
+      setTimeout(() => setDupMsg(null), 4000);
     } catch (err) {
-      console.error('Error duplicando plan:', err);
-      alert('Error al duplicar el plan. Revisa la consola para más detalles.');
+      console.error('[duplicar] error:', err);
+      setDupMsg({ type: 'err', text: 'Error al duplicar el plan. Ver consola para detalles.' });
     } finally {
       setDuplicating(false);
     }
@@ -2111,6 +2117,11 @@ export default function PlannerPage() {
             <button className="btn btn-ghost" onClick={handleDuplicatePrevMonth} disabled={duplicating} title="Duplicar mes anterior">
               <CopyIcon size={13}/>{duplicating ? 'Copiando...' : 'Duplicar mes'}
             </button>
+            {dupMsg && (
+              <span style={{ fontSize: 12, color: dupMsg.type === 'ok' ? 'var(--accent)' : '#D7474B', fontWeight: 600 }}>
+                {dupMsg.text}
+              </span>
+            )}
             <button className="btn btn-ghost" onClick={() => setShowCopyPlanModal(true)} title="Copiar plan a otro atleta">
               <CopyIcon size={13}/>Copiar a atleta
             </button>
