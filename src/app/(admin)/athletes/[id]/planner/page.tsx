@@ -1241,6 +1241,7 @@ export default function PlannerPage() {
   const [applyingTemplate, setApplyingTemplate] = useState(false);
   const [copyingSession, setCopyingSession] = useState<DbSession | null>(null);
   const [showCopyPlanModal, setShowCopyPlanModal] = useState(false);
+  const [completedDates, setCompletedDates] = useState<Map<string, 'done' | 'partial'>>(new Map());
   // calendar drag state
   const [calDragging, setCalDragging] = useState<string | null>(null);
   const [calDropOver, setCalDropOver] = useState<string | null>(null);
@@ -1287,19 +1288,28 @@ export default function PlannerPage() {
       .then(({ data }) => setMonthPlan(normalizePlan(data?.plan)));
   }, [id, currentYear, currentMonth]);
 
-  // ── Fetch session titles for calendar month ────────────────
+  // ── Fetch session titles + completion status for calendar month ──
   useEffect(() => {
     if (!id) return;
     const start = calendarStart(currentYear, currentMonth);
     const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 4 * 7 - 1);
     const supabase = createClient();
-    supabase.from('sessions').select('date, title').eq('athlete_id', id).gte('date', toISO(start)).lte('date', toISO(end))
+    supabase.from('sessions')
+      .select('date, title, session_blocks ( session_exercises ( sets ( done ) ) )')
+      .eq('athlete_id', id).gte('date', toISO(start)).lte('date', toISO(end))
       .then(({ data }) => {
-        const map = new Map<string, string>();
+        const titleMap = new Map<string, string>();
+        const compMap = new Map<string, 'done' | 'partial'>();
         for (const s of (data || [])) {
-          if (!map.has(s.date)) map.set(s.date, s.title);
+          if (!titleMap.has(s.date)) titleMap.set(s.date, s.title);
+          const allSets: { done: boolean }[] = (s.session_blocks || [])
+            .flatMap((b: any) => (b.session_exercises || []).flatMap((e: any) => e.sets || []));
+          const doneSets = allSets.filter(set => set.done).length;
+          if (allSets.length > 0 && doneSets > 0)
+            compMap.set(s.date, doneSets === allSets.length ? 'done' : 'partial');
         }
-        setMonthSessionMap(map);
+        setMonthSessionMap(titleMap);
+        setCompletedDates(compMap);
       });
   }, [id, currentYear, currentMonth]);
 
@@ -2305,9 +2315,12 @@ export default function PlannerPage() {
                   const isDropTarget = !!calDragging && calDragging !== dateISO && !hasSession;
                   const isDraggingThis = calDragging === dateISO;
                   const isDropOver = calDropOver === dateISO;
+                  const completionStatus = inMonth ? completedDates.get(dateISO) : undefined;
+                  const isDone = completionStatus === 'done';
+                  const isPartial = completionStatus === 'partial';
 
-                  const displayColor = hasSession ? '#2E6BD6' : (isAllRest ? 'var(--text-muted)' : t.color);
-                  let displayBg = hasSession ? 'rgba(46,107,214,0.10)' : (isAllRest ? 'var(--surface-2)' : t.bg);
+                  const displayColor = isDone ? '#2BB673' : (isPartial ? '#f59e0b' : (hasSession ? '#2E6BD6' : (isAllRest ? 'var(--text-muted)' : t.color)));
+                  let displayBg = isDone ? 'rgba(43,182,115,0.15)' : (isPartial ? 'rgba(245,158,11,0.10)' : (hasSession ? 'rgba(46,107,214,0.10)' : (isAllRest ? 'var(--surface-2)' : t.bg)));
                   if (isDropOver) displayBg = 'rgba(43,182,115,0.18)';
 
                   let borderStyle: string;
@@ -2365,8 +2378,10 @@ export default function PlannerPage() {
                       <div>
                         {hasSession ? (
                           <>
-                            <div style={{ fontSize: 8, fontWeight: 700, color: '#2E6BD6', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Sesión</div>
-                            <div style={{ fontSize: 9, fontWeight: 600, color: '#2E6BD6', lineHeight: 1.2, marginTop: 1, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                            <div style={{ fontSize: 8, fontWeight: 700, color: displayColor, letterSpacing: '0.06em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 3 }}>
+                              {isDone ? '✓ Completado' : isPartial ? '◑ Parcial' : 'Sesión'}
+                            </div>
+                            <div style={{ fontSize: 9, fontWeight: 600, color: displayColor, lineHeight: 1.2, marginTop: 1, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                               {sessionTitle}
                             </div>
                           </>
