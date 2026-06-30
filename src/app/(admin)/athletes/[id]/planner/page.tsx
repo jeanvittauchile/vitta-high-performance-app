@@ -1685,25 +1685,34 @@ export default function PlannerPage() {
     })));
   }
 
-  // ── Duplicate exercise ─────────────────────────────────────
-  async function duplicateExercise(exerciseId: string, blockId: string) {
+  // ── Duplicate set ──────────────────────────────────────────
+  async function duplicateSet(setId: string, exerciseId: string, blockId: string) {
     const session = daySessions.find(s => s.session_blocks.some(b => b.id === blockId));
     if (!session) return;
     const block = session.session_blocks.find(b => b.id === blockId);
     if (!block) return;
     const ex = block.session_exercises.find(e => e.id === exerciseId);
     if (!ex) return;
+    const set = ex.sets.find(s => s.id === setId);
+    if (!set) return;
     const supabase = createClient();
-    const nextSort = Math.max(...block.session_exercises.map(e => e.sort_order)) + 1;
-    const { data: newEx } = await supabase.from('session_exercises')
-      .insert({ block_id: blockId, name: ex.name, level: ex.level, note: ex.note, video_url: ex.video_url, sort_order: nextSort })
-      .select('id').single();
-    if (newEx && ex.sets.length > 0) {
-      await supabase.from('sets').insert(
-        ex.sets.map((s, i) => ({ session_ex_id: newEx.id, reps: s.reps, load: s.load, rpe_target: s.rpe_target, rest: s.rest, done: false, sort_order: i }))
-      );
+    const nextSort = Math.max(...ex.sets.map(s => s.sort_order)) + 1;
+    const { data: newSet } = await supabase.from('sets')
+      .insert({ session_ex_id: exerciseId, reps: set.reps, load: set.load, rpe_target: set.rpe_target, rest: set.rest, done: false, sort_order: nextSort })
+      .select('id, reps, load, rpe_target, rest, sort_order').single();
+    if (newSet) {
+      setDaySessions(prev => prev.map(s => ({
+        ...s,
+        session_blocks: s.session_blocks.map(b =>
+          b.id === blockId ? {
+            ...b,
+            session_exercises: b.session_exercises.map(e =>
+              e.id === exerciseId ? { ...e, sets: [...e.sets, newSet as DbSet] } : e
+            ),
+          } : b
+        ),
+      })));
     }
-    await fetchDaySessions();
   }
 
   // ── Move exercise up / down ────────────────────────────────
@@ -2598,7 +2607,7 @@ export default function PlannerPage() {
                                   return (
                                     <div key={item.id} style={{ background: 'white', borderRadius: 6, border: '1px solid var(--border)', overflow: 'hidden' }}>
                                       <div
-                                        style={{ display: 'grid', gridTemplateColumns: '20px 1fr auto auto auto auto', gap: 8, alignItems: 'center', padding: '8px 10px', fontSize: 12, cursor: 'pointer' }}
+                                        style={{ display: 'grid', gridTemplateColumns: '20px 1fr auto auto auto', gap: 8, alignItems: 'center', padding: '8px 10px', fontSize: 12, cursor: 'pointer' }}
                                         onClick={() => toggleEx(item.id)}
                                       >
                                         <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)' }}>
@@ -2630,11 +2639,6 @@ export default function PlannerPage() {
                                             <ChevronDown size={11} style={{ display: 'block' }}/>
                                           </button>
                                         </div>
-                                        <button onClick={e => { e.stopPropagation(); duplicateExercise(item.id, block.id); }}
-                                          title="Duplicar ejercicio"
-                                          style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', opacity: 0.7 }}>
-                                          <CopyIcon size={13}/>
-                                        </button>
                                         <button onClick={e => { e.stopPropagation(); deleteExercise(item.id, block.id); }}
                                           style={{ background: 'transparent', border: 'none', color: '#D7474B', cursor: 'pointer', padding: '2px 4px', opacity: 0.7 }}>
                                           <TrashIcon size={13}/>
@@ -2646,18 +2650,23 @@ export default function PlannerPage() {
                                         <div style={{ borderTop: '1px solid var(--border)' }}>
                                           {item.sets.length > 0 && (
                                             <>
-                                              <div style={{ display: 'grid', gridTemplateColumns: '20px 1fr 1fr 46px 1fr 22px', gap: 6, padding: '5px 12px', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700 }}>
-                                                <div>SET</div><div>REPS</div><div>KG</div><div>RPE</div><div>DESCANSO</div><div/>
+                                              <div style={{ display: 'grid', gridTemplateColumns: '20px 1fr 1fr 46px 1fr 22px 22px', gap: 6, padding: '5px 12px', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700 }}>
+                                                <div>SET</div><div>REPS</div><div>KG</div><div>RPE</div><div>DESCANSO</div><div/><div/>
                                               </div>
                                               {item.sets.map((s, si) => {
                                                 const si_css: React.CSSProperties = { padding: '3px 5px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--surface-2)', fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text)', width: '100%', boxSizing: 'border-box' as const };
                                                 return (
-                                                <div key={s.id} onClick={e => e.stopPropagation()} style={{ display: 'grid', gridTemplateColumns: '20px 1fr 1fr 46px 1fr 22px', gap: 6, padding: '4px 12px', alignItems: 'center', borderTop: '1px solid var(--border)' }}>
+                                                <div key={s.id} onClick={e => e.stopPropagation()} style={{ display: 'grid', gridTemplateColumns: '20px 1fr 1fr 46px 1fr 22px 22px', gap: 6, padding: '4px 12px', alignItems: 'center', borderTop: '1px solid var(--border)' }}>
                                                   <span className="mono" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)' }}>{si + 1}</span>
                                                   <input defaultValue={s.reps ?? ''} placeholder="—" onBlur={e => updateSet(s.id, 'reps', e.target.value, item.id, block.id)} style={si_css}/>
                                                   <input defaultValue={s.load ?? ''} placeholder="—" type="number" min={0} step={0.5} onBlur={e => updateSet(s.id, 'load', e.target.value, item.id, block.id)} style={si_css}/>
                                                   <input defaultValue={s.rpe_target != null ? String(s.rpe_target) : ''} placeholder="—" type="number" min={1} max={10} step={0.5} onBlur={e => updateSet(s.id, 'rpe_target', e.target.value, item.id, block.id)} style={si_css}/>
                                                   <input defaultValue={s.rest ?? ''} placeholder="—" onBlur={e => updateSet(s.id, 'rest', e.target.value, item.id, block.id)} style={si_css}/>
+                                                  <button onClick={e => { e.stopPropagation(); duplicateSet(s.id, item.id, block.id); }}
+                                                    title="Duplicar serie"
+                                                    style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '1px 0', opacity: 0.6, display: 'grid', placeItems: 'center' }}>
+                                                    <CopyIcon size={11}/>
+                                                  </button>
                                                   <button onClick={e => { e.stopPropagation(); deleteSet(s.id, item.id, block.id); }}
                                                     style={{ background: 'transparent', border: 'none', color: '#D7474B', cursor: 'pointer', padding: '1px 0', opacity: 0.6, display: 'grid', placeItems: 'center' }}>
                                                     <XIcon size={11}/>
