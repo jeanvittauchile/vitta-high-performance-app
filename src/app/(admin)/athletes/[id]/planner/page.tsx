@@ -1667,6 +1667,45 @@ export default function PlannerPage() {
     })));
   }
 
+  // ── Update exercise note ───────────────────────────────────
+  async function updateExerciseNote(exerciseId: string, blockId: string, note: string) {
+    const value = note.trim() || null;
+    const supabase = createClient();
+    await supabase.from('session_exercises').update({ note: value }).eq('id', exerciseId);
+    setDaySessions(prev => prev.map(s => ({
+      ...s,
+      session_blocks: s.session_blocks.map(b =>
+        b.id === blockId ? {
+          ...b,
+          session_exercises: b.session_exercises.map(e =>
+            e.id === exerciseId ? { ...e, note: value } : e
+          ),
+        } : b
+      ),
+    })));
+  }
+
+  // ── Duplicate exercise ─────────────────────────────────────
+  async function duplicateExercise(exerciseId: string, blockId: string) {
+    const session = daySessions.find(s => s.session_blocks.some(b => b.id === blockId));
+    if (!session) return;
+    const block = session.session_blocks.find(b => b.id === blockId);
+    if (!block) return;
+    const ex = block.session_exercises.find(e => e.id === exerciseId);
+    if (!ex) return;
+    const supabase = createClient();
+    const nextSort = Math.max(...block.session_exercises.map(e => e.sort_order)) + 1;
+    const { data: newEx } = await supabase.from('session_exercises')
+      .insert({ block_id: blockId, name: ex.name, level: ex.level, note: ex.note, video_url: ex.video_url, sort_order: nextSort })
+      .select('id').single();
+    if (newEx && ex.sets.length > 0) {
+      await supabase.from('sets').insert(
+        ex.sets.map((s, i) => ({ session_ex_id: newEx.id, reps: s.reps, load: s.load, rpe_target: s.rpe_target, rest: s.rest, done: false, sort_order: i }))
+      );
+    }
+    await fetchDaySessions();
+  }
+
   // ── Move exercise up / down ────────────────────────────────
   async function moveExercise(exerciseId: string, blockId: string, dir: 'up' | 'down') {
     const session = daySessions.find(s => s.session_blocks.some(b => b.id === blockId));
@@ -2559,7 +2598,7 @@ export default function PlannerPage() {
                                   return (
                                     <div key={item.id} style={{ background: 'white', borderRadius: 6, border: '1px solid var(--border)', overflow: 'hidden' }}>
                                       <div
-                                        style={{ display: 'grid', gridTemplateColumns: '20px 1fr auto auto auto', gap: 8, alignItems: 'center', padding: '8px 10px', fontSize: 12, cursor: 'pointer' }}
+                                        style={{ display: 'grid', gridTemplateColumns: '20px 1fr auto auto auto auto', gap: 8, alignItems: 'center', padding: '8px 10px', fontSize: 12, cursor: 'pointer' }}
                                         onClick={() => toggleEx(item.id)}
                                       >
                                         <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)' }}>
@@ -2591,6 +2630,11 @@ export default function PlannerPage() {
                                             <ChevronDown size={11} style={{ display: 'block' }}/>
                                           </button>
                                         </div>
+                                        <button onClick={e => { e.stopPropagation(); duplicateExercise(item.id, block.id); }}
+                                          title="Duplicar ejercicio"
+                                          style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', opacity: 0.7 }}>
+                                          <CopyIcon size={13}/>
+                                        </button>
                                         <button onClick={e => { e.stopPropagation(); deleteExercise(item.id, block.id); }}
                                           style={{ background: 'transparent', border: 'none', color: '#D7474B', cursor: 'pointer', padding: '2px 4px', opacity: 0.7 }}>
                                           <TrashIcon size={13}/>
@@ -2623,6 +2667,16 @@ export default function PlannerPage() {
                                               })}
                                             </>
                                           )}
+                                          <div onClick={e => e.stopPropagation()} style={{ padding: '6px 12px', borderTop: '1px solid var(--border)' }}>
+                                            <textarea
+                                              key={item.id + (item.note ?? '')}
+                                              defaultValue={item.note ?? ''}
+                                              placeholder="Añadir nota o descripción..."
+                                              onBlur={e => updateExerciseNote(item.id, block.id, e.target.value)}
+                                              rows={2}
+                                              style={{ width: '100%', boxSizing: 'border-box' as const, fontSize: 11, padding: '4px 6px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.4 }}
+                                            />
+                                          </div>
                                           {addSetFor === item.id ? (
                                             <AddSetForm
                                               exerciseId={item.id}
