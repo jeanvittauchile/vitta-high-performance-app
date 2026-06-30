@@ -1811,18 +1811,24 @@ export default function PlannerPage() {
     setDuplicating(true);
     const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
     const prevMonthNum = currentMonth === 1 ? 12 : currentMonth - 1;
-    const supabase = createClient();
-    const { data } = await supabase.from('month_plans').select('plan')
-      .eq('athlete_id', id).eq('year', prevYear).eq('month', prevMonthNum).maybeSingle();
-    if (!data?.plan) {
-      alert(`No hay plan guardado para ${MONTH_NAMES[prevMonthNum - 1]} ${prevYear}.`);
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase.from('month_plans').select('plan')
+        .eq('athlete_id', id).eq('year', prevYear).eq('month', prevMonthNum).maybeSingle();
+      if (error) throw error;
+      if (!data?.plan) {
+        alert(`No hay plan guardado para ${MONTH_NAMES[prevMonthNum - 1]} ${prevYear}.`);
+        return;
+      }
+      const plan = normalizePlan(data.plan);
+      await savePlan(plan);
+      setMonthPlan(plan);
+    } catch (err) {
+      console.error('Error duplicando plan:', err);
+      alert('Error al duplicar el plan. Revisa la consola para más detalles.');
+    } finally {
       setDuplicating(false);
-      return;
     }
-    const plan = normalizePlan(data.plan);
-    await savePlan(plan);
-    setMonthPlan(plan);
-    setDuplicating(false);
   }
 
   async function handleApplyTemplate(tpl: DbPlanTemplate) {
