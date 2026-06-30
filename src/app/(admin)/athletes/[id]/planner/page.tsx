@@ -1824,7 +1824,9 @@ export default function PlannerPage() {
         setDupMsg({ type: 'err', text: `No hay plan guardado para ${MONTH_NAMES[prevMonthNum - 1]} ${prevYear}.` });
         return;
       }
+      console.log('[duplicar] plan raw:', JSON.stringify(data.plan));
       const plan = normalizePlan(data.plan);
+      console.log('[duplicar] plan normalizado:', JSON.stringify(plan));
       await savePlan(plan);
       setMonthPlan(plan);
       setDupMsg({ type: 'ok', text: `Plan de ${MONTH_NAMES[prevMonthNum - 1]} duplicado correctamente.` });
