@@ -2253,9 +2253,6 @@ export default function PlannerPage() {
             <button className="btn btn-ghost" onClick={() => setShowCopyPlanModal(true)} title="Copiar plan a otro atleta">
               <CopyIcon size={13}/>Copiar a atleta
             </button>
-            <button className="btn btn-ghost" onClick={() => setShowTemplateModal(true)} title="Aplicar plantilla mensual">
-              <LayersIcon size={13}/>Plantilla
-            </button>
             <div style={{ width: 1, height: 18, background: 'var(--border)', flexShrink: 0 }}/>
             <button className="btn btn-ghost" onClick={handleDeletePlan} style={{ color: '#D7474B' }}>
               <TrashIcon size={13}/>Eliminar plan
