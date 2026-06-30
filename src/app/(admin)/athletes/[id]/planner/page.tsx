@@ -1295,18 +1295,15 @@ export default function PlannerPage() {
     const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 4 * 7 - 1);
     const supabase = createClient();
     supabase.from('sessions')
-      .select('date, title, session_blocks ( session_exercises ( sets ( done ) ) )')
+      .select('date, title, session_feedback(id)')
       .eq('athlete_id', id).gte('date', toISO(start)).lte('date', toISO(end))
       .then(({ data }) => {
         const titleMap = new Map<string, string>();
         const compMap = new Map<string, 'done' | 'partial'>();
         for (const s of (data || [])) {
           if (!titleMap.has(s.date)) titleMap.set(s.date, s.title);
-          const allSets: { done: boolean }[] = (s.session_blocks || [])
-            .flatMap((b: any) => (b.session_exercises || []).flatMap((e: any) => e.sets || []));
-          const doneSets = allSets.filter(set => set.done).length;
-          if (allSets.length > 0 && doneSets > 0)
-            compMap.set(s.date, doneSets === allSets.length ? 'done' : 'partial');
+          const fb = Array.isArray(s.session_feedback) ? s.session_feedback : [];
+          if (fb.length > 0) compMap.set(s.date, 'done');
         }
         setMonthSessionMap(titleMap);
         setCompletedDates(compMap);
@@ -2315,12 +2312,10 @@ export default function PlannerPage() {
                   const isDropTarget = !!calDragging && calDragging !== dateISO && !hasSession;
                   const isDraggingThis = calDragging === dateISO;
                   const isDropOver = calDropOver === dateISO;
-                  const completionStatus = inMonth ? completedDates.get(dateISO) : undefined;
-                  const isDone = completionStatus === 'done';
-                  const isPartial = completionStatus === 'partial';
+                  const isDone = inMonth && completedDates.get(dateISO) === 'done';
 
-                  const displayColor = isDone ? '#2BB673' : (isPartial ? '#f59e0b' : (hasSession ? '#2E6BD6' : (isAllRest ? 'var(--text-muted)' : t.color)));
-                  let displayBg = isDone ? 'rgba(43,182,115,0.15)' : (isPartial ? 'rgba(245,158,11,0.10)' : (hasSession ? 'rgba(46,107,214,0.10)' : (isAllRest ? 'var(--surface-2)' : t.bg)));
+                  const displayColor = isDone ? '#2BB673' : (hasSession ? '#2E6BD6' : (isAllRest ? 'var(--text-muted)' : t.color));
+                  let displayBg = isDone ? 'rgba(43,182,115,0.18)' : (hasSession ? 'rgba(46,107,214,0.10)' : (isAllRest ? 'var(--surface-2)' : t.bg));
                   if (isDropOver) displayBg = 'rgba(43,182,115,0.18)';
 
                   let borderStyle: string;
@@ -2378,8 +2373,8 @@ export default function PlannerPage() {
                       <div>
                         {hasSession ? (
                           <>
-                            <div style={{ fontSize: 8, fontWeight: 700, color: displayColor, letterSpacing: '0.06em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 3 }}>
-                              {isDone ? '✓ Completado' : isPartial ? '◑ Parcial' : 'Sesión'}
+                            <div style={{ fontSize: 8, fontWeight: 700, color: displayColor, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                              {isDone ? '✓ Completado' : 'Sesión'}
                             </div>
                             <div style={{ fontSize: 9, fontWeight: 600, color: displayColor, lineHeight: 1.2, marginTop: 1, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                               {sessionTitle}
