@@ -1807,35 +1807,111 @@ export default function PlannerPage() {
     );
   }
 
-  // ── Duplicate previous month plan ─────────────────────────
+  // ── Duplicate previous month sessions ─────────────────────
   async function handleDuplicatePrevMonth() {
     setDuplicating(true);
     setDupMsg(null);
     const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
     const prevMonthNum = currentMonth === 1 ? 12 : currentMonth - 1;
-    console.log('[duplicar] buscando plan', prevMonthNum, prevYear, 'para atleta', id);
     try {
       const supabase = createClient();
-      const { data, error } = await supabase.from('month_plans').select('plan')
-        .eq('athlete_id', id).eq('year', prevYear).eq('month', prevMonthNum).maybeSingle();
-      console.log('[duplicar] data:', JSON.stringify(data));
-      console.log('[duplicar] error:', JSON.stringify(error));
-      if (error) throw error;
-      if (!data?.plan) {
-        console.log('[duplicar] no hay plan, saliendo');
-        setDupMsg({ type: 'err', text: `No hay plan guardado para ${MONTH_NAMES[prevMonthNum - 1]} ${prevYear}.` });
+      const prevStart = calendarStart(prevYear, prevMonthNum);
+      const prevEnd = new Date(prevStart.getFullYear(), prevStart.getMonth(), prevStart.getDate() + 27);
+
+      const { data: prevSessions, error: sessErr } = await supabase
+        .from('sessions')
+        .select(`
+          id, title, duration, rpe_target, date,
+          session_blocks (
+            id, name, category, color, sort_order,
+            session_exercises (
+              id, exercise_id, name, level, note, sort_order, video_url,
+              sets ( id, reps, load, rpe_target, rest, sort_order, done )
+            )
+          )
+        `)
+        .eq('athlete_id', id)
+        .gte('date', toISO(prevStart))
+        .lte('date', toISO(prevEnd))
+        .order('date');
+      if (sessErr) throw sessErr;
+
+      if (!prevSessions || prevSessions.length === 0) {
+        setDupMsg({ type: 'err', text: `No hay sesiones en ${MONTH_NAMES[prevMonthNum - 1]} ${prevYear}.` });
         return;
       }
-      console.log('[duplicar] plan raw:', JSON.stringify(data.plan));
-      const plan = normalizePlan(data.plan);
-      console.log('[duplicar] plan normalizado:', JSON.stringify(plan));
-      await savePlan(plan);
-      setMonthPlan(plan);
-      setDupMsg({ type: 'ok', text: `Plan de ${MONTH_NAMES[prevMonthNum - 1]} duplicado correctamente.` });
+
+      const currStart = calendarStart(currentYear, currentMonth);
+      const currEnd = new Date(currStart.getFullYear(), currStart.getMonth(), currStart.getDate() + 27);
+      const { data: existingSessions } = await supabase
+        .from('sessions').select('date')
+        .eq('athlete_id', id)
+        .gte('date', toISO(currStart))
+        .lte('date', toISO(currEnd));
+      const existingDates = new Set<string>((existingSessions || []).map((s: { date: string }) => s.date));
+
+      const newSessionMap = new Map<string, string>();
+      let copied = 0;
+
+      for (const session of prevSessions) {
+        const prevDate = new Date(session.date + 'T12:00:00');
+        const dayOffset = Math.round((prevDate.getTime() - prevStart.getTime()) / 86400000);
+        if (dayOffset < 0 || dayOffset >= 28) continue;
+        const w = Math.floor(dayOffset / 7);
+        const d = dayOffset % 7;
+        const targetDate = toISO(cellDate(currentYear, currentMonth, w, d));
+        if (existingDates.has(targetDate)) continue;
+
+        const { data: newSession, error: nsErr } = await supabase
+          .from('sessions')
+          .insert({ athlete_id: id, date: targetDate, title: session.title, duration: session.duration, rpe_target: session.rpe_target })
+          .select('id').single();
+        if (nsErr || !newSession) continue;
+
+        newSessionMap.set(targetDate, session.title);
+        copied++;
+
+        const blocks = ((session as any).session_blocks || []).sort((a: any, b: any) => a.sort_order - b.sort_order);
+        for (const block of blocks) {
+          const { data: newBlock, error: nbErr } = await supabase
+            .from('session_blocks')
+            .insert({ session_id: newSession.id, name: block.name, category: block.category, color: block.color, sort_order: block.sort_order })
+            .select('id').single();
+          if (nbErr || !newBlock) continue;
+
+          const exercises = (block.session_exercises || []).sort((a: any, b: any) => a.sort_order - b.sort_order);
+          for (const ex of exercises) {
+            const { data: newEx, error: neErr } = await supabase
+              .from('session_exercises')
+              .insert({ block_id: newBlock.id, exercise_id: ex.exercise_id, name: ex.name, level: ex.level, note: ex.note, sort_order: ex.sort_order, video_url: ex.video_url })
+              .select('id').single();
+            if (neErr || !newEx) continue;
+
+            const sets = (ex.sets || []).sort((a: any, b: any) => a.sort_order - b.sort_order);
+            for (const set of sets) {
+              await supabase.from('sets').insert({ session_ex_id: newEx.id, reps: set.reps, load: set.load, rpe_target: set.rpe_target, rest: set.rest, sort_order: set.sort_order, done: false });
+            }
+          }
+        }
+      }
+
+      if (copied === 0) {
+        setDupMsg({ type: 'err', text: 'Todas las fechas del mes actual ya tienen sesiones.' });
+        return;
+      }
+
+      setMonthSessionMap(prev => {
+        const next = new Map(prev);
+        for (const [date, title] of newSessionMap) {
+          if (!next.has(date)) next.set(date, title);
+        }
+        return next;
+      });
+      setDupMsg({ type: 'ok', text: `${copied} sesión${copied !== 1 ? 'es' : ''} duplicada${copied !== 1 ? 's' : ''} de ${MONTH_NAMES[prevMonthNum - 1]}.` });
       setTimeout(() => setDupMsg(null), 4000);
     } catch (err) {
       console.error('[duplicar] error:', err);
-      setDupMsg({ type: 'err', text: 'Error al duplicar el plan. Ver consola para detalles.' });
+      setDupMsg({ type: 'err', text: 'Error al duplicar. Ver consola.' });
     } finally {
       setDuplicating(false);
     }
