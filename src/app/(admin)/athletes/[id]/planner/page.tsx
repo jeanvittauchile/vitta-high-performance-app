@@ -1818,9 +1818,11 @@ export default function PlannerPage() {
       const supabase = createClient();
       const { data, error } = await supabase.from('month_plans').select('plan')
         .eq('athlete_id', id).eq('year', prevYear).eq('month', prevMonthNum).maybeSingle();
-      console.log('[duplicar] resultado:', { data, error });
+      console.log('[duplicar] data:', JSON.stringify(data));
+      console.log('[duplicar] error:', JSON.stringify(error));
       if (error) throw error;
       if (!data?.plan) {
+        console.log('[duplicar] no hay plan, saliendo');
         setDupMsg({ type: 'err', text: `No hay plan guardado para ${MONTH_NAMES[prevMonthNum - 1]} ${prevYear}.` });
         return;
       }
