@@ -2096,6 +2096,7 @@ export default function PlannerPage() {
     await supabase.from('month_plans').delete()
       .eq('athlete_id', id).eq('year', currentYear).eq('month', currentMonth);
     setMonthPlan(defaultPlan());
+    setMonthSessionMap(new Map());
     setDaySessions([]);
     setSelectedDay(null);
   }
