@@ -2066,11 +2066,38 @@ export default function PlannerPage() {
   }
 
   async function handleDeletePlan() {
-    if (!confirm(`¿Eliminar el plan de ${MONTH_NAMES[currentMonth - 1]} ${currentYear}? Esta acción no se puede deshacer.`)) return;
+    if (!confirm(`¿Eliminar TODO el plan de ${MONTH_NAMES[currentMonth - 1]} ${currentYear}?\n\nSe borrarán el calendario, todas las sesiones, bloques, ejercicios y series del mes. Esta acción no se puede deshacer.`)) return;
     const supabase = createClient();
+    const monthStart = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
+    const monthEnd = `${currentYear}-${String(currentMonth).padStart(2, '0')}-31`;
+    const { data: monthSessions } = await supabase
+      .from('sessions')
+      .select('id')
+      .eq('athlete_id', id)
+      .gte('date', monthStart)
+      .lte('date', monthEnd);
+    if (monthSessions?.length) {
+      const sessionIds = monthSessions.map((s: any) => s.id);
+      const { data: blocks } = await supabase
+        .from('session_blocks').select('id').in('session_id', sessionIds);
+      if (blocks?.length) {
+        const blockIds = blocks.map((b: any) => b.id);
+        const { data: exercises } = await supabase
+          .from('session_exercises').select('id').in('block_id', blockIds);
+        if (exercises?.length) {
+          const exIds = exercises.map((e: any) => e.id);
+          await supabase.from('sets').delete().in('session_ex_id', exIds);
+          await supabase.from('session_exercises').delete().in('id', exIds);
+        }
+        await supabase.from('session_blocks').delete().in('id', blockIds);
+      }
+      await supabase.from('sessions').delete().in('id', sessionIds);
+    }
     await supabase.from('month_plans').delete()
       .eq('athlete_id', id).eq('year', currentYear).eq('month', currentMonth);
     setMonthPlan(defaultPlan());
+    setDaySessions([]);
+    setSelectedDay(null);
   }
 
   // ── Save current month as template ────────────────────────
