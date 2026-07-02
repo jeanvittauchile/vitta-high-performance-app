@@ -229,6 +229,8 @@ body {
 }
 .admin-table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
+.chart-bar:hover { filter: brightness(1.15); }
+
 /* Modal: responsive width + bounded height */
 .admin-modal {
   width: min(480px, calc(100vw - 32px));

@@ -3,49 +3,65 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { CATEGORIES } from '@/lib/constants';
-import { getCategoryIcon, PlusIcon, CalendarIcon, FlameIcon, TrendIcon, SparkleIcon, ChevronRight, UserIcon } from '@/components/icons';
+import { getCategoryIcon, PlusIcon, CalendarIcon, ChevronRight, UserIcon } from '@/components/icons';
 import StatusPill from '@/components/badges/StatusPill';
 import CreateSessionModal from '@/components/admin/CreateSessionModal';
 import AthleteProfileDrawer from '@/components/admin/AthleteProfileDrawer';
 import type { Athlete } from '@/lib/types';
 
-const PAIN_COLOR: Record<string, string> = { ninguno: '#22c55e', leve: '#4A8AF0', moderado: '#f59e0b', fuerte: '#f87171' };
-const PAIN_LABEL: Record<string, string> = { ninguno: 'Sin dolor', leve: 'Leve', moderado: 'Moderado', fuerte: 'Fuerte' };
+const MONTH_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 
-function fmtDuration(s: number): string {
-  const m = Math.floor(s / 60);
-  return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60 > 0 ? `${m % 60}m` : ''}`.trim();
-}
+interface MonthlyCount { key: string; label: string; count: number; }
 
-const KPI = ({ label, value, sub, accent }: { label: string; value: string | number; sub: string; accent: string }) => (
-  <div className="card" style={{ padding: '14px 16px', borderTop: `2px solid ${accent}` }}>
-    <div className="muted" style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700 }}>{label}</div>
-    <div className="display tnum" style={{ fontSize: 30, color: 'var(--text)', marginTop: 2 }}>{value}</div>
-    <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>{sub}</div>
-  </div>
-);
-
-const Alert = ({ icon, color, title, sub }: { icon: React.ReactNode; color: string; title: string; sub: string }) => (
-  <div style={{
-    display: 'grid', gridTemplateColumns: '24px 1fr', gap: 10, padding: '8px 10px',
-    borderRadius: 8, background: 'var(--surface-2)', borderLeft: `2px solid ${color}`,
-  }}>
-    <div style={{ color, marginTop: 2 }}>{icon}</div>
-    <div>
-      <div style={{ fontSize: 12, fontWeight: 600 }}>{title}</div>
-      <div className="muted" style={{ fontSize: 11, marginTop: 1 }}>{sub}</div>
+function MonthlySessionsChart({ data, loading }: { data: MonthlyCount[]; loading: boolean }) {
+  if (loading) {
+    return <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>Cargando...</div>;
+  }
+  const total = data.reduce((s, d) => s + d.count, 0);
+  if (total === 0) {
+    return (
+      <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+        Aún no hay sesiones completadas registradas.
+      </div>
+    );
+  }
+  const max = Math.max(...data.map(d => d.count), 1);
+  const CHART_H = 96;
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: CHART_H + 34, padding: '4px 2px 0' }}>
+      {data.map(d => {
+        const barH = d.count === 0 ? 0 : Math.max(3, (d.count / max) * CHART_H);
+        return (
+          <div key={d.key} title={`${d.label}: ${d.count} sesión${d.count === 1 ? '' : 'es'} completada${d.count === 1 ? '' : 's'}`}
+            style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+            <div style={{ height: CHART_H, display: 'flex', alignItems: 'flex-end', width: '100%', justifyContent: 'center' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                <span className="mono tnum" style={{ fontSize: 10, fontWeight: 700, color: d.count > 0 ? 'var(--text)' : 'var(--text-faint)' }}>{d.count}</span>
+                <div className="chart-bar" style={{
+                  width: 22, maxWidth: '100%', height: barH,
+                  background: 'var(--vitta-blue)', borderRadius: '4px 4px 0 0',
+                  transition: 'filter 0.1s',
+                }}/>
+              </div>
+            </div>
+            <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{d.label}</span>
+          </div>
+        );
+      })}
     </div>
-  </div>
-);
+  );
+}
 
 export default function DashboardPage() {
   const router = useRouter();
   const [athletes, setAthletes] = useState<Athlete[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [todaySessions, setTodaySessions] = useState<{ id: string; title: string; duration: number; athlete_id: string; athlete_name: string; completed: boolean; energy_level: number | null; pain_level: string | null; duration_seconds: number | null }[]>([]);
+  const [todaySessions, setTodaySessions] = useState<{ id: string; athlete_id: string; completed: boolean }[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<Athlete | null>(null);
   const [completedCountMap, setCompletedCountMap] = useState<Record<string, number>>({});
+  const [monthlySessions, setMonthlySessions] = useState<MonthlyCount[]>([]);
+  const [monthlyLoading, setMonthlyLoading] = useState(true);
 
   const fetchAthletes = useCallback(async () => {
     const supabase = createClient();
@@ -87,32 +103,42 @@ export default function DashboardPage() {
     const today = new Date().toISOString().slice(0, 10);
     const { data } = await supabase
       .from('sessions')
-      .select('id, title, duration, athlete_id, athletes(name), session_feedback(id, energy_level, pain_level, duration_seconds)')
+      .select('id, athlete_id, session_feedback(id)')
       .eq('date', today)
       .order('created_at');
     if (data) {
       setTodaySessions(data.map((s: any) => {
         const fb = Array.isArray(s.session_feedback) ? s.session_feedback[0] : s.session_feedback;
-        return {
-          id: s.id,
-          title: s.title,
-          duration: s.duration,
-          athlete_id: s.athlete_id,
-          athlete_name: s.athletes?.name || '—',
-          completed: !!fb,
-          energy_level: fb?.energy_level ?? null,
-          pain_level: fb?.pain_level ?? null,
-          duration_seconds: fb?.duration_seconds ?? null,
-        };
+        return { id: s.id, athlete_id: s.athlete_id, completed: !!fb };
       }));
     }
+  }, []);
+
+  const fetchMonthlySessions = useCallback(async () => {
+    setMonthlyLoading(true);
+    const supabase = createClient();
+    const now = new Date();
+    const months: { key: string; label: string }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({ key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, label: MONTH_SHORT[d.getMonth()] });
+    }
+    const { data } = await supabase
+      .from('sessions')
+      .select('date, session_feedback!inner(id)')
+      .gte('date', `${months[0].key}-01`);
+    const counts: Record<string, number> = {};
+    (data || []).forEach((s: any) => { counts[s.date.slice(0, 7)] = (counts[s.date.slice(0, 7)] || 0) + 1; });
+    setMonthlySessions(months.map(m => ({ ...m, count: counts[m.key] || 0 })));
+    setMonthlyLoading(false);
   }, []);
 
   useEffect(() => {
     fetchAthletes();
     fetchTodaySessions();
     fetchCompletedSessionCounts();
-  }, [fetchAthletes, fetchTodaySessions, fetchCompletedSessionCounts]);
+    fetchMonthlySessions();
+  }, [fetchAthletes, fetchTodaySessions, fetchCompletedSessionCounts, fetchMonthlySessions]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -121,12 +147,12 @@ export default function DashboardPage() {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'session_feedback' }, () => {
         fetchTodaySessions();
         fetchCompletedSessionCounts();
+        fetchMonthlySessions();
       })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [fetchTodaySessions, fetchCompletedSessionCounts]);
+  }, [fetchTodaySessions, fetchCompletedSessionCounts, fetchMonthlySessions]);
 
-  const peak    = athletes.filter(a => a.status === 'peak').length;
   const onTrack = athletes.filter(a => a.status === 'on-track').length;
   const missed  = athletes.filter(a => a.status === 'missed').length;
 
@@ -165,17 +191,16 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="admin-kpi-grid">
-        <KPI label="Atletas activos"       value={loading ? '...' : athletes.length} sub={`${onTrack} en plan, ${missed} ausentes`} accent="var(--vitta-navy)"/>
-        <KPI label="En pico"               value={loading ? '...' : peak}   sub="Esta semana"  accent="var(--vitta-blue)"/>
-        <KPI label="Sesiones completadas"  value={loading ? '...' : Object.values(completedCountMap).reduce((s, n) => s + n, 0)} sub="Total histórico" accent="var(--green)"/>
-        <KPI label="Sesiones hoy"          value={loading ? '...' : todaySessions.length} sub="Planificadas para hoy" accent="var(--amber)"/>
-      </div>
-
       <div className="admin-main-grid">
         <div className="card" style={{ padding: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.04em' }}>Atletas — vista de hoy</div>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.04em' }}>Atletas — vista de hoy</div>
+              <div className="muted" style={{ fontSize: 11, marginTop: 3 }}>
+                {loading ? 'Cargando...' : `${athletes.length} activos · ${onTrack} en plan · ${missed} ausentes`}
+                {!loading && todaySessions.length > 0 && ` · ${sessionsDoneCount} realizadas hoy · ${sessionsPendingCount} pendientes`}
+              </div>
+            </div>
             <button className="btn btn-ghost btn-sm" onClick={() => router.push('/athletes')} style={{ fontSize: 10 }}>Ver todos</button>
           </div>
 
@@ -291,85 +316,37 @@ export default function DashboardPage() {
 
         <div style={{ display: 'grid', gap: 12 }}>
           <div className="card" style={{ padding: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <div style={{ fontSize: 12, fontWeight: 700 }}>Alertas</div>
-              <button className="btn btn-ghost btn-sm" style={{ fontSize: 10 }}>Ver todas</button>
+            <div style={{ marginBottom: 4 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.04em' }}>Sesiones completadas por mes</div>
+              <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>Últimos 6 meses · todos los atletas</div>
             </div>
-            <div style={{ display: 'grid', gap: 8 }}>
-              <Alert icon={<FlameIcon size={14}/>}   color="var(--red)"   title="Sin alertas críticas" sub="Todo en orden por ahora"/>
-              <Alert icon={<TrendIcon size={14}/>}   color="var(--amber)" title="Sin sesiones hoy"      sub="Agrega sesiones para ver actividad"/>
-              <Alert icon={<SparkleIcon size={14}/>} color="var(--green)" title="Sistema listo"         sub="Crea atletas y planifica sesiones"/>
-            </div>
+            <MonthlySessionsChart data={monthlySessions} loading={monthlyLoading}/>
           </div>
 
           <div className="card" style={{ padding: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <div style={{ fontSize: 12, fontWeight: 700 }}>Sesiones de hoy</div>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowModal(true)} style={{ fontSize: 10 }}>+ Crear</button>
-            </div>
-            {todaySessions.length > 0 && (
-              <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-                <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4, background: '#22c55e18', color: 'var(--green)', fontWeight: 700 }}>
-                  ✓ {sessionsDoneCount} realizadas
-                </span>
-                <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4, background: '#f59e0b18', color: 'var(--amber)', fontWeight: 700 }}>
-                  ○ {sessionsPendingCount} pendientes
-                </span>
-              </div>
-            )}
-            {todaySessions.length === 0 ? (
-              <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-                No hay sesiones planificadas para hoy.
-              </div>
+            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', marginBottom: 10 }}>Sesiones ✓ por atleta</div>
+            {loading ? (
+              <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>Cargando...</div>
+            ) : athletes.length === 0 ? (
+              <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>Sin datos aún.</div>
             ) : (
               <div style={{ display: 'grid', gap: 6 }}>
-                {todaySessions.map(s => (
-                  <div key={s.id} style={{
-                    padding: '8px 10px', borderRadius: 8,
-                    background: s.completed ? '#22c55e08' : 'var(--surface-2)',
-                    border: `1px solid ${s.completed ? '#22c55e33' : 'var(--border)'}`,
-                    display: 'flex', alignItems: 'center', gap: 10,
-                  }}>
-                    <div style={{
-                      width: 20, height: 20, borderRadius: 10, flexShrink: 0,
-                      background: s.completed ? 'var(--green)' : 'var(--border)',
-                      display: 'grid', placeItems: 'center',
-                    }}>
-                      {s.completed ? (
-                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                          <path d="M1.5 5L4 7.5L8.5 2.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      ) : (
-                        <div style={{ width: 6, height: 6, borderRadius: 3, background: 'var(--text-muted)', opacity: 0.4 }}/>
-                      )}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600 }}>{s.title}</div>
-                      <div className="muted" style={{ fontSize: 11, marginTop: 1 }}>
-                        {s.athlete_name} · {s.completed && s.duration_seconds ? fmtDuration(s.duration_seconds) : `${s.duration} min`}
-                      </div>
-                      {s.completed && (s.energy_level != null || s.pain_level) && (
-                        <div style={{ display: 'flex', gap: 5, marginTop: 5, flexWrap: 'wrap' }}>
-                          {s.energy_level != null && (
-                            <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: 'rgba(34,197,94,0.12)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.22)' }}>
-                              ⚡ {s.energy_level}/10
-                            </span>
-                          )}
-                          {s.pain_level && s.pain_level !== 'ninguno' && (
-                            <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: `${PAIN_COLOR[s.pain_level] || '#fff'}15`, color: PAIN_COLOR[s.pain_level] || '#fff', border: `1px solid ${PAIN_COLOR[s.pain_level] || '#fff'}30` }}>
-                              ⚠ {PAIN_LABEL[s.pain_level] || s.pain_level}
-                            </span>
-                          )}
-                          {s.pain_level === 'ninguno' && (
-                            <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: 'rgba(34,197,94,0.08)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.18)' }}>
-                              ✓ Sin dolor
-                            </span>
-                          )}
+                {[...athletes]
+                  .sort((a, b) => (completedCountMap[b.id] ?? 0) - (completedCountMap[a.id] ?? 0))
+                  .slice(0, 6)
+                  .map(a => {
+                    const count = completedCountMap[a.id] ?? 0;
+                    const max = Math.max(...athletes.map(x => completedCountMap[x.id] ?? 0), 1);
+                    return (
+                      <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, width: 84, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>{a.name}</span>
+                        <div style={{ flex: 1, height: 8, borderRadius: 4, background: 'var(--surface-2)', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${(count / max) * 100}%`, background: 'var(--vitta-blue)', borderRadius: 4 }}/>
                         </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                        <span className="mono tnum" style={{ fontSize: 11, fontWeight: 700, width: 20, textAlign: 'right', flexShrink: 0 }}>{count}</span>
+                      </div>
+                    );
+                  })}
               </div>
             )}
           </div>
