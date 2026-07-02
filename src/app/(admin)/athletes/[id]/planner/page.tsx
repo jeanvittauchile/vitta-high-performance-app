@@ -1214,11 +1214,6 @@ export default function PlannerPage() {
   const [athleteLoading, setAthleteLoading] = useState(true);
   const [bests, setBests] = useState<BestEntry[]>([]);
   const [bestsLoading, setBestsLoading] = useState(true);
-  const [libExercises, setLibExercises] = useState<{ id: string; name: string; category: string; level: string }[]>([]);
-  const [openCats, setOpenCats] = useState<Set<string>>(new Set());
-  const [pillEx, setPillEx] = useState<{ name: string; level: string } | null>(null);
-  const [pillSession, setPillSession] = useState<string | null>(null);
-  const [pillAdding, setPillAdding] = useState(false);
   const [dragOverBlock, setDragOverBlock] = useState<string | null>(null);
   const [dragBlock, setDragBlock] = useState<{ id: string; sessionId: string } | null>(null);
   const [monthPlan, setMonthPlan] = useState<PlanCell[][]>(defaultPlan());
@@ -1271,14 +1266,6 @@ export default function PlannerPage() {
         setBestsLoading(false);
       });
   }, [id]);
-
-  // ── Fetch library exercises for category suggestions ──────
-  useEffect(() => {
-    const supabase = createClient();
-    supabase.from('exercises').select('id, name, category, level').then(({ data }) => {
-      if (data) setLibExercises(data);
-    });
-  }, []);
 
   // ── Fetch month plan ───────────────────────────────────────
   useEffect(() => {
@@ -1753,45 +1740,6 @@ export default function PlannerPage() {
     })));
   }
 
-  // ── Add exercise from sidebar pill ────────────────────────
-  async function addExerciseFromPill(blockId: string) {
-    if (!pillEx) return;
-    setPillAdding(true);
-    const supabase = createClient();
-    const { data: existing } = await supabase.from('session_exercises')
-      .select('sort_order').eq('block_id', blockId).order('sort_order', { ascending: false }).limit(1);
-    const nextSort = ((existing?.[0]?.sort_order ?? -1) as number) + 1;
-    const { data: exData } = await supabase.from('session_exercises')
-      .insert({ block_id: blockId, name: pillEx.name, level: pillEx.level, sort_order: nextSort })
-      .select('id').single();
-    if (exData) {
-      await supabase.from('sets').insert([
-        { session_ex_id: exData.id, reps: null, done: false, sort_order: 0 },
-      ]);
-      await fetchDaySessions();
-    }
-    setPillAdding(false);
-    setPillEx(null);
-    setPillSession(null);
-  }
-
-  // ── Add exercise by drag-drop ──────────────────────────────
-  async function addExerciseByDrop(blockId: string, name: string, level: string) {
-    const supabase = createClient();
-    const { data: existing } = await supabase.from('session_exercises')
-      .select('sort_order').eq('block_id', blockId).order('sort_order', { ascending: false }).limit(1);
-    const nextSort = ((existing?.[0]?.sort_order ?? -1) as number) + 1;
-    const { data: exData } = await supabase.from('session_exercises')
-      .insert({ block_id: blockId, name, level, sort_order: nextSort })
-      .select('id').single();
-    if (exData) {
-      await supabase.from('sets').insert([
-        { session_ex_id: exData.id, reps: null, done: false, sort_order: 0 },
-      ]);
-      await fetchDaySessions();
-    }
-  }
-
   // ── Update set field ───────────────────────────────────────
   async function updateSet(setId: string, field: 'reps' | 'load' | 'rpe_target' | 'rest', raw: string, exerciseId: string, blockId: string) {
     const value = field === 'rpe_target' ? (raw ? parseFloat(raw) : null) : (raw.trim() || null);
@@ -2137,15 +2085,6 @@ export default function PlannerPage() {
   // ── Derived values ─────────────────────────────────────────
   const focusCat = CATEGORIES[athlete?.focus || 'empuje'] || CATEGORIES.empuje;
 
-  const suggestionsByCat = useMemo(() => {
-    const map: Record<string, { id: string; name: string; level: string }[]> = {};
-    for (const catId of Object.keys(CATEGORIES)) {
-      const pool = libExercises.filter(e => e.category === catId);
-      const shuffled = [...pool].sort(() => Math.random() - 0.5);
-      map[catId] = shuffled.slice(0, 4);
-    }
-    return map;
-  }, [libExercises]);
   const todayISO = toISO(now);
 
   const selectedDate = selectedDay
@@ -2209,58 +2148,6 @@ export default function PlannerPage() {
         />
       )}
 
-      {/* ── Pill exercise picker modal ─────────────────────── */}
-      {pillEx && (
-        <div onClick={e => { if (e.target === e.currentTarget) { setPillEx(null); setPillSession(null); } }}
-          style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'rgba(14,25,54,0.6)', display: 'grid', placeItems: 'center' }}>
-          <div className="card" style={{ width: 380, padding: 22, display: 'grid', gap: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <div style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 3 }}>Agregar ejercicio</div>
-                <div style={{ fontSize: 16, fontWeight: 700 }}>{pillEx.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{pillEx.level} · 3 series de 5 reps (por defecto)</div>
-              </div>
-              <button onClick={() => { setPillEx(null); setPillSession(null); }}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 18, lineHeight: 1, padding: 4 }}>×</button>
-            </div>
-
-            {daySessions.length === 0 ? (
-              <div style={{ padding: '12px 14px', background: 'var(--surface-2)', borderRadius: 8, fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>
-                Selecciona un día con sesión planificada en el calendario primero.
-              </div>
-            ) : (
-              <div style={{ display: 'grid', gap: 10 }}>
-                {daySessions.map(session => {
-                  const isOpen = pillSession === session.id;
-                  return (
-                    <div key={session.id} style={{ borderRadius: 10, border: `1px solid ${isOpen ? 'var(--vitta-blue)' : 'var(--border)'}`, overflow: 'hidden' }}>
-                      <button onClick={() => setPillSession(isOpen ? null : session.id)}
-                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', background: isOpen ? 'rgba(46,107,214,0.08)' : 'var(--surface-2)', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
-                        <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{session.title}</span>
-                        <ChevronDown size={12} style={{ color: 'var(--text-muted)', transform: isOpen ? 'rotate(180deg)' : 'none' }}/>
-                      </button>
-                      {isOpen && (
-                        <div style={{ padding: '8px 10px', display: 'grid', gap: 6 }}>
-                          {session.session_blocks.length === 0 ? (
-                            <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '4px 2px' }}>Esta sesión no tiene bloques aún.</div>
-                          ) : session.session_blocks.map(block => (
-                            <button key={block.id} onClick={() => addExerciseFromPill(block.id)} disabled={pillAdding}
-                              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 7, background: 'var(--surface)', border: '1px solid var(--border)', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
-                              <div style={{ width: 8, height: 8, borderRadius: 4, background: block.color || 'var(--vitta-blue)', flexShrink: 0 }}/>
-                              <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{block.name}</span>
-                              <PlusIcon size={12} stroke="var(--vitta-blue)"/>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* ─── Main area ──────────────────────────────────────── */}
       <div className="thin-scroll planner-main" style={{ overflow: 'auto', padding: '20px 24px 28px' }}>
@@ -2529,11 +2416,7 @@ export default function PlannerPage() {
                             const srcBlockId = e.dataTransfer.getData('block/id');
                             if (srcBlockId && srcBlockId !== block.id) {
                               reorderBlocks(srcBlockId, block.id, session.id);
-                              return;
                             }
-                            const name = e.dataTransfer.getData('ex/name');
-                            const level = e.dataTransfer.getData('ex/level');
-                            if (name) addExerciseByDrop(block.id, name, level);
                           }}
                           style={{
                             background: dragOverBlock === block.id && dragBlock ? 'rgba(46,107,214,0.08)' : dragOverBlock === block.id ? `${blockColor}18` : isDone ? 'rgba(43,182,115,0.06)' : 'var(--surface-2)',
@@ -2832,20 +2715,21 @@ export default function PlannerPage() {
                       {entry.reps}×{fmtLoad(entry.load)}kg
                     </div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 3 }}>
                     {[
                       { label: '1RM', value: entry.rm1, accent: true },
                       { label: '3RM', value: entry.rm3, accent: false },
                       { label: '6RM', value: entry.rm6, accent: false },
+                      { label: '8RM', value: entry.rm8, accent: false },
                     ].map(rm => (
                       <div key={rm.label} style={{
                         background: rm.accent ? 'rgba(46,107,214,0.18)' : 'rgba(255,255,255,0.05)',
                         border: `1px solid ${rm.accent ? 'rgba(46,107,214,0.35)' : 'rgba(255,255,255,0.08)'}`,
-                        borderRadius: 7, padding: '5px 6px', textAlign: 'center',
+                        borderRadius: 6, padding: '4px 3px', textAlign: 'center',
                       }}>
-                        <div style={{ fontSize: 8, color: rm.accent ? 'rgba(74,138,240,0.9)' : 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase' }}>{rm.label}</div>
-                        <div className="mono tnum" style={{ fontSize: 13, fontWeight: 800, color: rm.accent ? '#4A8AF0' : 'var(--text)', marginTop: 2 }}>{fmtLoad(rm.value)}</div>
-                        <div style={{ fontSize: 8, color: 'var(--text-muted)' }}>kg</div>
+                        <div style={{ fontSize: 7, color: rm.accent ? 'rgba(74,138,240,0.9)' : 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase' }}>{rm.label}</div>
+                        <div className="mono tnum" style={{ fontSize: 11, fontWeight: 800, color: rm.accent ? '#4A8AF0' : 'var(--text)', marginTop: 1 }}>{fmtLoad(rm.value)}</div>
+                        <div style={{ fontSize: 7, color: 'var(--text-muted)' }}>kg</div>
                       </div>
                     ))}
                   </div>
@@ -2854,65 +2738,6 @@ export default function PlannerPage() {
             })}
           </div>
         )}
-
-        {/* Category exercise suggestions */}
-        <div style={{ marginTop: 20 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>
-            Biblioteca · Sugerencias
-          </div>
-          <div style={{ display: 'grid', gap: 4 }}>
-            {Object.values(CATEGORIES).map(cat => {
-              const CatIcon = getCategoryIcon(cat.id);
-              const isOpen = openCats.has(cat.id);
-              const suggestions = suggestionsByCat[cat.id] ?? [];
-              return (
-                <div key={cat.id} style={{ borderRadius: 9, border: '1px solid var(--border)', overflow: 'hidden' }}>
-                  <button
-                    onClick={() => setOpenCats(prev => {
-                      const next = new Set(prev);
-                      isOpen ? next.delete(cat.id) : next.add(cat.id);
-                      return next;
-                    })}
-                    style={{
-                      width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '7px 10px', background: isOpen ? `${cat.color}18` : 'var(--surface-2)',
-                      border: 'none', cursor: 'pointer', textAlign: 'left',
-                    }}
-                  >
-                    <div style={{ width: 22, height: 22, borderRadius: 6, background: `${cat.color}22`, color: cat.color, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                      <CatIcon size={13} stroke="currentColor"/>
-                    </div>
-                    <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{cat.label}</span>
-                    <span style={{ fontSize: 9, fontWeight: 700, color: cat.color, letterSpacing: '0.06em' }}>{cat.short}</span>
-                    <ChevronDown size={11} style={{ color: 'var(--text-muted)', transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}/>
-                  </button>
-                  {isOpen && (
-                    <div style={{ padding: '6px 8px 8px', background: 'var(--surface)', display: 'grid', gap: 4 }}>
-                      {suggestions.length === 0 ? (
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '4px 2px' }}>Sin ejercicios en esta categoría</div>
-                      ) : suggestions.map(ex => (
-                        <div key={ex.id}
-                          draggable
-                          onDragStart={e => {
-                            e.dataTransfer.setData('ex/name', ex.name);
-                            e.dataTransfer.setData('ex/level', ex.level);
-                            e.dataTransfer.effectAllowed = 'copy';
-                          }}
-                          onClick={() => { setPillEx({ name: ex.name, level: ex.level }); setPillSession(null); }}
-                          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 20, background: `${cat.color}18`, border: `1px solid ${cat.color}40`, cursor: 'grab', userSelect: 'none' }}>
-                          <span style={{ flex: 1, fontSize: 11, fontWeight: 600, color: cat.color, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ex.name}</span>
-                          <span style={{ fontSize: 9, color: 'var(--text-muted)', flexShrink: 0 }}>{ex.level}</span>
-                          <PlusIcon size={10} stroke={cat.color}/>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
       </div>
     </div>
   );

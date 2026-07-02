@@ -5,6 +5,7 @@ export interface BestEntry {
   rm1: number;
   rm3: number;
   rm6: number;
+  rm8: number;
 }
 
 function round05(v: number): number {
@@ -44,6 +45,7 @@ export function computeExerciseBests(sessions: any[]): BestEntry[] {
       rm1: round05(rm1),
       rm3: round05(rm1 * 34 / 36),
       rm6: round05(rm1 * 31 / 36),
+      rm8: round05(rm1 * 29 / 36),
     }))
     .sort((a, b) => b.rm1 - a.rm1);
 }
