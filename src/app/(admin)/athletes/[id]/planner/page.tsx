@@ -2314,28 +2314,6 @@ export default function PlannerPage() {
             </div>
           </div>
 
-          {/* ── Legend ─────────────────────────────────────── */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 10px', marginBottom: 10, paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <div style={{ width: 8, height: 8, borderRadius: 2, background: '#2BB673', flexShrink: 0 }}/>
-              <span style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 600 }}>Completado</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <div style={{ width: 8, height: 8, borderRadius: 2, background: '#2E6BD6', flexShrink: 0 }}/>
-              <span style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 600 }}>Sesión planif.</span>
-            </div>
-            {Object.entries(DAY_TYPES).filter(([k]) => k !== 'REST').map(([key, dt]) => (
-              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <div style={{ width: 8, height: 8, borderRadius: 2, background: dt.color, flexShrink: 0 }}/>
-                <span style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 600 }}>{dt.label}</span>
-              </div>
-            ))}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <div style={{ width: 8, height: 8, borderRadius: 2, background: '#5C6480', flexShrink: 0 }}/>
-              <span style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 600 }}>Descanso</span>
-            </div>
-          </div>
-
           <div style={{ display: 'grid', gridTemplateColumns: '60px repeat(7, 1fr)', gap: 4, marginTop: 8 }}>
             <div/>
             {['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map(d => (
