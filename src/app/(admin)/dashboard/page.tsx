@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { CATEGORIES } from '@/lib/constants';
-import { getCategoryIcon, PlusIcon, CalendarIcon, ChevronRight, UserIcon } from '@/components/icons';
+import { PlusIcon, CalendarIcon, ChevronRight, UserIcon } from '@/components/icons';
 import StatusPill from '@/components/badges/StatusPill';
 import CreateSessionModal from '@/components/admin/CreateSessionModal';
 import AthleteProfileDrawer from '@/components/admin/AthleteProfileDrawer';
@@ -131,6 +131,7 @@ export default function DashboardPage() {
   const [todaySessions, setTodaySessions] = useState<{ id: string; athlete_id: string; completed: boolean }[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<Athlete | null>(null);
   const [completedCountMap, setCompletedCountMap] = useState<Record<string, number>>({});
+  const [totalSessionCountMap, setTotalSessionCountMap] = useState<Record<string, number>>({});
   const [monthlyRaw, setMonthlyRaw] = useState<{ date: string; athlete_id: string; title: string; status: SessionStatus }[]>([]);
   const [monthlyMonths, setMonthlyMonths] = useState<{ key: string; label: string }[]>([]);
   const [monthlyLoading, setMonthlyLoading] = useState(true);
@@ -168,6 +169,16 @@ export default function DashboardPage() {
       const counts: Record<string, number> = {};
       data.forEach((s: any) => { counts[s.athlete_id] = (counts[s.athlete_id] || 0) + 1; });
       setCompletedCountMap(counts);
+    }
+  }, []);
+
+  const fetchTotalSessionCounts = useCallback(async () => {
+    const supabase = createClient();
+    const { data } = await supabase.from('sessions').select('athlete_id');
+    if (data) {
+      const counts: Record<string, number> = {};
+      data.forEach((s: any) => { counts[s.athlete_id] = (counts[s.athlete_id] || 0) + 1; });
+      setTotalSessionCountMap(counts);
     }
   }, []);
 
@@ -215,8 +226,9 @@ export default function DashboardPage() {
     fetchAthletes();
     fetchTodaySessions();
     fetchCompletedSessionCounts();
+    fetchTotalSessionCounts();
     fetchMonthlySessions();
-  }, [fetchAthletes, fetchTodaySessions, fetchCompletedSessionCounts, fetchMonthlySessions]);
+  }, [fetchAthletes, fetchTodaySessions, fetchCompletedSessionCounts, fetchTotalSessionCounts, fetchMonthlySessions]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -227,9 +239,13 @@ export default function DashboardPage() {
         fetchCompletedSessionCounts();
         fetchMonthlySessions();
       })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sessions' }, () => {
+        fetchTotalSessionCounts();
+        fetchMonthlySessions();
+      })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [fetchTodaySessions, fetchCompletedSessionCounts, fetchMonthlySessions]);
+  }, [fetchTodaySessions, fetchCompletedSessionCounts, fetchTotalSessionCounts, fetchMonthlySessions]);
 
   const onTrack = athletes.filter(a => a.status === 'on-track').length;
   const missed  = athletes.filter(a => a.status === 'missed').length;
@@ -308,15 +324,15 @@ export default function DashboardPage() {
             <div className="admin-table-scroll"><table className="vtable vtable-athletes-list">
               <thead>
                 <tr>
-                  <th>Atleta</th><th>Foco principal</th><th>Sesiones ✓</th><th>Hoy</th><th>RPE 7d</th><th>Estado</th><th></th>
+                  <th>Atleta</th><th>Sesiones planificadas</th><th>Sesiones ✓</th><th>Hoy</th><th>RPE 7d</th><th>Estado</th><th></th>
                 </tr>
               </thead>
               <tbody>
                 {athletes.map(a => {
                   const cat = CATEGORIES[a.focus];
-                  const CatIcon = getCategoryIcon(a.focus);
                   const sessionStatus = athleteSessionMap[a.id] ?? 'none';
                   const completedCount = completedCountMap[a.id] ?? 0;
+                  const totalCount = totalSessionCountMap[a.id] ?? 0;
                   return (
                     <tr key={a.id} onClick={() => router.push(`/athletes/${a.id}/planner`)} style={{ cursor: 'pointer' }}>
                       <td>
@@ -329,10 +345,11 @@ export default function DashboardPage() {
                         </div>
                       </td>
                       <td>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 8px', borderRadius: 4, background: `${cat?.color}18`, color: cat?.color }}>
-                          <CatIcon size={11} stroke="currentColor"/>
-                          <span style={{ fontSize: 11, fontWeight: 600 }}>{cat?.label}</span>
-                        </span>
+                        {totalCount > 0 ? (
+                          <span className="mono tnum" style={{ fontSize: 12, fontWeight: 700 }}>{totalCount}</span>
+                        ) : (
+                          <span className="muted" style={{ fontSize: 11 }}>—</span>
+                        )}
                       </td>
                       <td>
                         {completedCount > 0 ? (
