@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { CATEGORIES } from '@/lib/constants';
@@ -60,8 +60,10 @@ export default function DashboardPage() {
   const [todaySessions, setTodaySessions] = useState<{ id: string; athlete_id: string; completed: boolean }[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<Athlete | null>(null);
   const [completedCountMap, setCompletedCountMap] = useState<Record<string, number>>({});
-  const [monthlySessions, setMonthlySessions] = useState<MonthlyCount[]>([]);
+  const [monthlyRaw, setMonthlyRaw] = useState<{ date: string; athlete_id: string }[]>([]);
+  const [monthlyMonths, setMonthlyMonths] = useState<{ key: string; label: string }[]>([]);
   const [monthlyLoading, setMonthlyLoading] = useState(true);
+  const [monthlyAthleteFilter, setMonthlyAthleteFilter] = useState<string>('all');
 
   const fetchAthletes = useCallback(async () => {
     const supabase = createClient();
@@ -125,11 +127,10 @@ export default function DashboardPage() {
     }
     const { data } = await supabase
       .from('sessions')
-      .select('date, session_feedback!inner(id)')
+      .select('date, athlete_id, session_feedback!inner(id)')
       .gte('date', `${months[0].key}-01`);
-    const counts: Record<string, number> = {};
-    (data || []).forEach((s: any) => { counts[s.date.slice(0, 7)] = (counts[s.date.slice(0, 7)] || 0) + 1; });
-    setMonthlySessions(months.map(m => ({ ...m, count: counts[m.key] || 0 })));
+    setMonthlyMonths(months);
+    setMonthlyRaw((data || []).map((s: any) => ({ date: s.date, athlete_id: s.athlete_id })));
     setMonthlyLoading(false);
   }, []);
 
@@ -155,6 +156,15 @@ export default function DashboardPage() {
 
   const onTrack = athletes.filter(a => a.status === 'on-track').length;
   const missed  = athletes.filter(a => a.status === 'missed').length;
+
+  const monthlySessions = useMemo<MonthlyCount[]>(() => {
+    const filtered = monthlyAthleteFilter === 'all'
+      ? monthlyRaw
+      : monthlyRaw.filter(s => s.athlete_id === monthlyAthleteFilter);
+    const counts: Record<string, number> = {};
+    filtered.forEach(s => { const k = s.date.slice(0, 7); counts[k] = (counts[k] || 0) + 1; });
+    return monthlyMonths.map(m => ({ ...m, count: counts[m.key] || 0 }));
+  }, [monthlyRaw, monthlyMonths, monthlyAthleteFilter]);
 
   const athleteSessionMap = Object.fromEntries(todaySessions.map(s => [s.athlete_id, s.completed ? 'completed' : 'pending'])) as Record<string, 'completed' | 'pending'>;
   const sessionsDoneCount = todaySessions.filter(s => s.completed).length;
@@ -316,9 +326,23 @@ export default function DashboardPage() {
 
         <div style={{ display: 'grid', gap: 12 }}>
           <div className="card" style={{ padding: 14 }}>
-            <div style={{ marginBottom: 4 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.04em' }}>Sesiones completadas por mes</div>
-              <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>Últimos 6 meses · todos los atletas</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4, gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.04em' }}>Sesiones completadas por mes</div>
+                <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>Últimos 6 meses</div>
+              </div>
+              <select
+                value={monthlyAthleteFilter}
+                onChange={e => setMonthlyAthleteFilter(e.target.value)}
+                style={{
+                  fontSize: 11, fontWeight: 600, padding: '5px 8px', borderRadius: 6,
+                  border: '1px solid var(--border)', background: 'var(--surface-2)',
+                  color: 'var(--text)', fontFamily: 'inherit', cursor: 'pointer', flexShrink: 0,
+                }}
+              >
+                <option value="all">Todos los atletas</option>
+                {athletes.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
             </div>
             <MonthlySessionsChart data={monthlySessions} loading={monthlyLoading}/>
           </div>
