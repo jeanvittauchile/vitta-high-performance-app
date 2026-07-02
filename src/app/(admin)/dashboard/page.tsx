@@ -123,6 +123,52 @@ function MonthlySessionsChart({ data, loading }: { data: MonthlyBucket[]; loadin
   );
 }
 
+function fmtMonthLabel(key: string): string {
+  const [y, m] = key.split('-').map(Number);
+  return `${MONTH_SHORT[m - 1]} ${y}`;
+}
+
+function PlannedSessionsCell({ total, byMonth }: { total: number; byMonth: { key: string; count: number }[] }) {
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  if (total === 0) return <span className="muted" style={{ fontSize: 11 }}>—</span>;
+  const months = [...byMonth].sort((a, b) => b.key.localeCompare(a.key));
+  return (
+    <>
+      <span
+        className="mono tnum"
+        style={{ fontSize: 12, fontWeight: 700, cursor: 'default', borderBottom: '1px dashed var(--text-faint)' }}
+        onMouseEnter={e => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setPos({ top: r.bottom + 6, left: r.left + r.width / 2 });
+        }}
+        onMouseLeave={() => setPos(null)}
+      >
+        {total}
+      </span>
+      {pos && (
+        <div style={{
+          position: 'fixed', zIndex: 100, top: pos.top, left: pos.left, transform: 'translateX(-50%)',
+          background: 'var(--surface)', border: '1px solid var(--border)',
+          borderRadius: 8, boxShadow: 'var(--shadow-md)', padding: '8px 10px', minWidth: 130,
+          pointerEvents: 'none',
+        }}>
+          <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6, whiteSpace: 'nowrap' }}>
+            Sesiones por mes
+          </div>
+          <div style={{ display: 'grid', gap: 3, maxHeight: 160, overflowY: 'auto' }}>
+            {months.map(m => (
+              <div key={m.key} style={{ display: 'flex', justifyContent: 'space-between', gap: 14, fontSize: 11 }}>
+                <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{fmtMonthLabel(m.key)}</span>
+                <span className="mono tnum" style={{ fontWeight: 700 }}>{m.count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [athletes, setAthletes] = useState<Athlete[]>([]);
@@ -132,6 +178,7 @@ export default function DashboardPage() {
   const [selectedAthlete, setSelectedAthlete] = useState<Athlete | null>(null);
   const [completedCountMap, setCompletedCountMap] = useState<Record<string, number>>({});
   const [totalSessionCountMap, setTotalSessionCountMap] = useState<Record<string, number>>({});
+  const [totalSessionsByMonthMap, setTotalSessionsByMonthMap] = useState<Record<string, { key: string; count: number }[]>>({});
   const [monthlyRaw, setMonthlyRaw] = useState<{ date: string; athlete_id: string; title: string; status: SessionStatus }[]>([]);
   const [monthlyMonths, setMonthlyMonths] = useState<{ key: string; label: string }[]>([]);
   const [monthlyLoading, setMonthlyLoading] = useState(true);
@@ -174,11 +221,25 @@ export default function DashboardPage() {
 
   const fetchTotalSessionCounts = useCallback(async () => {
     const supabase = createClient();
-    const { data } = await supabase.from('sessions').select('athlete_id');
+    const { data } = await supabase.from('sessions').select('athlete_id, date');
     if (data) {
       const counts: Record<string, number> = {};
-      data.forEach((s: any) => { counts[s.athlete_id] = (counts[s.athlete_id] || 0) + 1; });
+      const byMonth: Record<string, Record<string, number>> = {};
+      data.forEach((s: any) => {
+        counts[s.athlete_id] = (counts[s.athlete_id] || 0) + 1;
+        const monthKey = s.date.slice(0, 7);
+        const athleteMonths = byMonth[s.athlete_id] || (byMonth[s.athlete_id] = {});
+        athleteMonths[monthKey] = (athleteMonths[monthKey] || 0) + 1;
+      });
       setTotalSessionCountMap(counts);
+      setTotalSessionsByMonthMap(
+        Object.fromEntries(
+          Object.entries(byMonth).map(([athleteId, months]) => [
+            athleteId,
+            Object.entries(months).map(([key, count]) => ({ key, count })),
+          ])
+        )
+      );
     }
   }, []);
 
@@ -301,7 +362,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="admin-main-grid">
+      <div style={{ display: 'grid', gap: 14 }}>
         <div className="card" style={{ padding: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <div>
@@ -345,11 +406,7 @@ export default function DashboardPage() {
                         </div>
                       </td>
                       <td>
-                        {totalCount > 0 ? (
-                          <span className="mono tnum" style={{ fontSize: 12, fontWeight: 700 }}>{totalCount}</span>
-                        ) : (
-                          <span className="muted" style={{ fontSize: 11 }}>—</span>
-                        )}
+                        <PlannedSessionsCell total={totalCount} byMonth={totalSessionsByMonthMap[a.id] ?? []}/>
                       </td>
                       <td>
                         {completedCount > 0 ? (
@@ -425,7 +482,7 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <div style={{ display: 'grid', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 12 }}>
           <div className="card" style={{ padding: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4, gap: 8 }}>
               <div>
