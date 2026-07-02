@@ -153,7 +153,7 @@ function NewSessionModal({ date, athleteId, onClose, onCreated }: {
 
   return (
     <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(14,25,54,0.55)', display: 'grid', placeItems: 'center' }}>
-      <div className="card" style={{ width: 440, padding: 24 }}>
+      <div className="card admin-modal" style={{ width: 'min(440px, calc(100vw - 32px))', padding: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 18 }}>
           <div style={{ fontSize: 15, fontWeight: 700 }}>Nueva sesión · {date}</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 20 }}>×</button>
@@ -212,7 +212,7 @@ function EditSessionModal({ session, onClose, onSaved }: {
 
   return (
     <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(14,25,54,0.55)', display: 'grid', placeItems: 'center' }}>
-      <div className="card" style={{ width: 440, padding: 24 }}>
+      <div className="card admin-modal" style={{ width: 'min(440px, calc(100vw - 32px))', padding: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 18 }}>
           <div style={{ fontSize: 15, fontWeight: 700 }}>Editar sesión</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 20 }}>×</button>
@@ -632,7 +632,7 @@ function CopyPlanToAthleteModal({ currentAthleteId, year, month, plan, onClose }
 
   return (
     <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(14,25,54,0.55)', display: 'grid', placeItems: 'center' }}>
-      <div className="card" style={{ width: 480, padding: 24 }}>
+      <div className="card admin-modal" style={{ padding: 24 }}>
         {done ? (
           <>
             <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Plan copiado correctamente</div>
@@ -809,7 +809,7 @@ function CreateTemplateModal({ onClose, onCreated, initialTemplate }: {
   return (
     <div onClick={e => e.target === e.currentTarget && onClose()}
       style={{ position: 'fixed', inset: 0, zIndex: 1001, background: 'rgba(14,25,54,0.55)', display: 'grid', placeItems: 'center' }}>
-      <div className="card thin-scroll" style={{ width: 600, padding: 24, maxHeight: '90vh', overflowY: 'auto' }}>
+      <div className="card thin-scroll admin-modal" style={{ width: 'min(600px, calc(100vw - 32px))', padding: 24, maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 18 }}>
           <div style={{ fontSize: 15, fontWeight: 700 }}>
             {isEdit ? 'Editar plantilla mensual' : 'Nueva plantilla mensual'}
@@ -998,7 +998,7 @@ function TemplatesModal({ onClose, onApply, applying }: {
   return (
     <div onClick={e => e.target === e.currentTarget && onClose()}
       style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(14,25,54,0.55)', display: 'grid', placeItems: 'center' }}>
-      <div className="card thin-scroll" style={{ width: 560, padding: 24, maxHeight: '90vh', overflowY: 'auto' }}>
+      <div className="card thin-scroll admin-modal" style={{ width: 'min(560px, calc(100vw - 32px))', padding: 24, maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 18 }}>
           <div style={{ fontSize: 15, fontWeight: 700 }}>Plantillas mensuales</div>
           <button onClick={onClose} disabled={applying} style={{ background: 'none', border: 'none', cursor: applying ? 'default' : 'pointer', color: 'var(--text-muted)', fontSize: 20, opacity: applying ? 0.4 : 1 }}>×</button>
@@ -1169,7 +1169,7 @@ function CopySessionModal({ session, athleteId, onClose, onCopied }: {
 
   return (
     <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(14,25,54,0.55)', display: 'grid', placeItems: 'center' }}>
-      <div className="card" style={{ width: 380, padding: 24 }}>
+      <div className="card admin-modal" style={{ width: 'min(380px, calc(100vw - 32px))', padding: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 18 }}>
           <div>
             <div style={{ fontSize: 15, fontWeight: 700 }}>Copiar sesión</div>
@@ -2201,7 +2201,8 @@ export default function PlannerPage() {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '60px repeat(7, 1fr)', gap: 4, marginTop: 8 }}>
+          <div className="admin-table-scroll">
+          <div style={{ display: 'grid', gridTemplateColumns: '60px repeat(7, minmax(70px, 1fr))', minWidth: 580, gap: 4, marginTop: 8 }}>
             <div/>
             {['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map(d => (
               <div key={d} style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-muted)', textAlign: 'center', padding: '4px 0' }}>{d}</div>
@@ -2313,6 +2314,7 @@ export default function PlannerPage() {
                 })}
               </>
             ))}
+          </div>
           </div>
         </div>
 
@@ -2568,7 +2570,8 @@ export default function PlannerPage() {
                                       {isExpanded && (
                                         <div style={{ borderTop: '1px solid var(--border)' }}>
                                           {item.sets.length > 0 && (
-                                            <>
+                                            <div className="admin-table-scroll">
+                                            <div style={{ minWidth: 320 }}>
                                               <div style={{ display: 'grid', gridTemplateColumns: '20px 1fr 1fr 46px 1fr 22px 22px', gap: 6, padding: '5px 12px', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700 }}>
                                                 <div>SET</div><div>REPS</div><div>KG</div><div>RPE</div><div>DESCANSO</div><div/><div/>
                                               </div>
@@ -2593,7 +2596,8 @@ export default function PlannerPage() {
                                                 </div>
                                                 );
                                               })}
-                                            </>
+                                            </div>
+                                            </div>
                                           )}
                                           <div onClick={e => e.stopPropagation()} style={{ padding: '6px 12px', borderTop: '1px solid var(--border)' }}>
                                             <textarea

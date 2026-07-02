@@ -89,10 +89,10 @@ export default function PlannerPage() {
   const todaySessions = [...sessions.keys()].filter(k => k.endsWith(`|${todayISO}`)).length;
 
   return (
-    <div style={{ padding: '20px 24px 32px', maxWidth: 1120, margin: '0 auto' }}>
+    <div className="admin-page-pad" style={{ maxWidth: 1120, margin: '0 auto' }}>
 
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700 }}>Planificador semanal</div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Visión general de todos los atletas</div>
@@ -101,7 +101,7 @@ export default function PlannerPage() {
           <button onClick={prevWeek} className="btn btn-ghost" style={{ padding: '6px 8px' }}>
             <ChevronLeft size={16}/>
           </button>
-          <span style={{ fontSize: 13, fontWeight: 600, minWidth: 170, textAlign: 'center' }}>
+          <span style={{ fontSize: 13, fontWeight: 600, minWidth: 120, textAlign: 'center' }}>
             {weekLabel(weekStart)}
           </span>
           <button onClick={nextWeek} className="btn btn-ghost" style={{ padding: '6px 8px' }}>
@@ -114,10 +114,10 @@ export default function PlannerPage() {
       </div>
 
       {/* Grid */}
-      <div className="card" style={{ overflow: 'hidden', padding: 0 }}>
+      <div className="card admin-table-scroll" style={{ padding: 0 }}>
 
         {/* Column headers */}
-        <div style={{ display: 'grid', gridTemplateColumns: '170px repeat(7, 1fr)', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '150px repeat(7, minmax(88px, 1fr))', minWidth: 750, borderBottom: '1px solid var(--border)' }}>
           <div style={{ padding: '10px 16px', fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', display: 'flex', alignItems: 'center' }}>
             Atleta
           </div>
@@ -149,7 +149,8 @@ export default function PlannerPage() {
         ) : athletes.map((ath, ai) => (
           <div key={ath.id} style={{
             display: 'grid',
-            gridTemplateColumns: '170px repeat(7, 1fr)',
+            gridTemplateColumns: '150px repeat(7, minmax(88px, 1fr))',
+            minWidth: 750,
             borderTop: '1px solid var(--border)',
           }}>
             {/* Athlete cell */}

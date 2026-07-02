@@ -329,4 +329,11 @@ body {
   .planner-main { padding: 12px 14px 24px !important; }
   .planner-header-actions { overflow-x: auto; flex-shrink: 0; }
   .planner-header-actions .btn { white-space: nowrap; flex-shrink: 0; }
+
+  /* Library: drop the muscle/equipment column, keep name/level/actions */
+  .lib-ex-row {
+    grid-template-columns: 1fr 60px 20px 24px 24px 24px !important;
+    gap: 6px !important;
+  }
+  .lib-ex-muscle { display: none !important; }
 }

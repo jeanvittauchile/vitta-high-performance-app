@@ -29,7 +29,7 @@ function ExerciseDetailModal({ exercise, onClose }: { exercise: LibExercise; onC
   return (
     <div onClick={e => e.target === e.currentTarget && onClose()}
       style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(14,25,54,0.55)', display: 'grid', placeItems: 'center' }}>
-      <div className="card" style={{ width: 480, padding: 0, overflow: 'hidden' }}>
+      <div className="card admin-modal" style={{ padding: 0, overflow: 'hidden' }}>
         {/* Header */}
         <div style={{ padding: '18px 20px', background: `${c.color}12`, borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -159,7 +159,7 @@ function EditExerciseModal({ exercise, onClose, onSaved }: {
   return (
     <div onClick={e => e.target === e.currentTarget && onClose()}
       style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(14,25,54,0.55)', display: 'grid', placeItems: 'center' }}>
-      <div className="card" style={{ width: 480, padding: 24, maxHeight: '90vh', overflowY: 'auto' }}>
+      <div className="card admin-modal" style={{ padding: 24, maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <div>
             <div style={{ fontSize: 16, fontWeight: 700 }}>Editar ejercicio</div>
@@ -274,7 +274,7 @@ function NewExerciseModal({ onClose, onCreated }: { onClose: () => void; onCreat
   return (
     <div onClick={e => e.target === e.currentTarget && onClose()}
       style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(14,25,54,0.55)', display: 'grid', placeItems: 'center' }}>
-      <div className="card" style={{ width: 480, padding: 24, maxHeight: '90vh', overflowY: 'auto' }}>
+      <div className="card admin-modal" style={{ padding: 24, maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <div style={{ fontSize: 16, fontWeight: 700 }}>Nuevo ejercicio</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
@@ -396,7 +396,7 @@ function AddToSessionModal({ exercise, onClose }: { exercise: LibExercise; onClo
   return (
     <div onClick={e => e.target === e.currentTarget && onClose()}
       style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(14,25,54,0.55)', display: 'grid', placeItems: 'center' }}>
-      <div className="card" style={{ width: 420, padding: 24 }}>
+      <div className="card admin-modal" style={{ width: 'min(420px, calc(100vw - 32px))', padding: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div>
             <div style={{ fontSize: 15, fontWeight: 700 }}>Agregar a sesión</div>
@@ -507,7 +507,7 @@ export default function LibraryPage() {
   });
 
   return (
-    <div style={{ padding: '20px 24px 28px' }}>
+    <div className="admin-page-pad">
       {showNewExModal && (
         <NewExerciseModal onClose={() => setShowNewExModal(false)} onCreated={() => fetchExercises()}/>
       )}
@@ -528,14 +528,14 @@ export default function LibraryPage() {
         />
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 16 }}>
+      <div className="admin-page-header" style={{ marginBottom: 16 }}>
         <div>
           <div style={{ fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700 }}>Workspace · Biblioteca</div>
           <div className="display" style={{ fontSize: 28, fontStyle: 'italic' }}>
             {loading ? 'Cargando...' : `${exercises.length} ejercicios`}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button className="btn btn-ghost"><CopyIcon size={13}/>Importar</button>
           <Link href="/exercises/explore" className="btn btn-ghost" style={{ textDecoration: 'none' }}>
             Explorar ExerciseDB
@@ -591,13 +591,13 @@ export default function LibraryPage() {
       ) : (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           {/* Table header */}
-          <div style={{
+          <div className="lib-ex-row" style={{
             display: 'grid', gridTemplateColumns: '1fr 72px minmax(0,220px) 20px 26px 26px 26px',
             gap: 10, padding: '7px 14px',
             background: 'var(--surface-2)', borderBottom: '1px solid var(--border)',
             fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)',
           }}>
-            <div>Ejercicio</div><div>Nivel</div><div>Músculo · Equipo</div><div/><div/><div/><div/>
+            <div>Ejercicio</div><div>Nivel</div><div className="lib-ex-muscle">Músculo · Equipo</div><div/><div/><div/><div/>
           </div>
 
           {Object.entries(grouped).map(([catId, exs]) => {
@@ -620,6 +620,7 @@ export default function LibraryPage() {
                 {exs.map((ex, i) => (
                   <div
                     key={ex.id}
+                    className="lib-ex-row"
                     onClick={() => { if (confirmDeleteId && confirmDeleteId !== ex.dbId) setConfirmDeleteId(null); }}
                     style={{
                       display: 'grid', gridTemplateColumns: '1fr 72px minmax(0,220px) 20px 26px 26px 26px',
@@ -640,7 +641,7 @@ export default function LibraryPage() {
                       )}
                     </div>
                     <LevelBadge level={ex.level} size="sm"/>
-                    <span className="muted" style={{ fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span className="muted lib-ex-muscle" style={{ fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {[ex.muscle !== '—' ? ex.muscle : '', ex.equipment !== '—' ? ex.equipment : ''].filter(Boolean).join(' · ') || '—'}
                     </span>
                     {ex.video_url ? (
