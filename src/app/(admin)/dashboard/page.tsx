@@ -10,44 +10,115 @@ import AthleteProfileDrawer from '@/components/admin/AthleteProfileDrawer';
 import type { Athlete } from '@/lib/types';
 
 const MONTH_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+const WEEKDAY_SHORT = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
 
-interface MonthlyCount { key: string; label: string; count: number; }
+type SessionStatus = 'none' | 'partial' | 'full';
 
-function MonthlySessionsChart({ data, loading }: { data: MonthlyCount[]; loading: boolean }) {
+interface SessionDay { date: string; title: string; status: SessionStatus; }
+
+interface MonthlyBucket { key: string; label: string; none: number; partial: number; full: number; sessions: SessionDay[]; }
+
+const STATUS_META: Record<SessionStatus, { label: string; color: string }> = {
+  full:    { label: 'Completada',      color: 'var(--green)' },
+  partial: { label: 'Parcial',         color: 'var(--amber)' },
+  none:    { label: 'No completada',   color: 'var(--red)' },
+};
+
+function fmtDayLabel(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  return `${WEEKDAY_SHORT[dt.getDay()]} ${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
+}
+
+function MonthlySessionsChart({ data, loading }: { data: MonthlyBucket[]; loading: boolean }) {
+  const [selected, setSelected] = useState<{ key: string; status: SessionStatus } | null>(null);
+
   if (loading) {
     return <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>Cargando...</div>;
   }
-  const total = data.reduce((s, d) => s + d.count, 0);
+  const total = data.reduce((s, d) => s + d.none + d.partial + d.full, 0);
   if (total === 0) {
     return (
       <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-        Aún no hay sesiones completadas registradas.
+        Aún no hay sesiones registradas en este período.
       </div>
     );
   }
-  const max = Math.max(...data.map(d => d.count), 1);
+  const max = Math.max(...data.flatMap(d => [d.none, d.partial, d.full]), 1);
   const CHART_H = 96;
+  const statuses: SessionStatus[] = ['none', 'partial', 'full'];
+
+  const selectedBucket = selected ? data.find(d => d.key === selected.key) : null;
+  const selectedDays = selectedBucket && selected
+    ? selectedBucket.sessions.filter(s => s.status === selected.status).sort((a, b) => a.date.localeCompare(b.date))
+    : [];
+
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: CHART_H + 34, padding: '4px 2px 0' }}>
-      {data.map(d => {
-        const barH = d.count === 0 ? 0 : Math.max(3, (d.count / max) * CHART_H);
-        return (
-          <div key={d.key} title={`${d.label}: ${d.count} sesión${d.count === 1 ? '' : 'es'} completada${d.count === 1 ? '' : 's'}`}
-            style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-            <div style={{ height: CHART_H, display: 'flex', alignItems: 'flex-end', width: '100%', justifyContent: 'center' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                <span className="mono tnum" style={{ fontSize: 10, fontWeight: 700, color: d.count > 0 ? 'var(--text)' : 'var(--text-faint)' }}>{d.count}</span>
-                <div className="chart-bar" style={{
-                  width: 22, maxWidth: '100%', height: barH,
-                  background: 'var(--vitta-blue)', borderRadius: '4px 4px 0 0',
-                  transition: 'filter 0.1s',
-                }}/>
-              </div>
+    <div>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 10 }}>
+        {statuses.map(st => (
+          <div key={st} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div style={{ width: 8, height: 8, borderRadius: 2, background: STATUS_META[st].color, flexShrink: 0 }}/>
+            <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)' }}>{STATUS_META[st].label}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: CHART_H + 34, padding: '4px 2px 0' }}>
+        {data.map(d => (
+          <div key={d.key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+            <div style={{ height: CHART_H, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 2, width: '100%' }}>
+              {statuses.map(st => {
+                const count = d[st];
+                const barH = count === 0 ? 0 : Math.max(3, (count / max) * CHART_H);
+                const isSelected = selected?.key === d.key && selected?.status === st;
+                return (
+                  <button
+                    key={st}
+                    onClick={() => count > 0 && setSelected(isSelected ? null : { key: d.key, status: st })}
+                    title={`${d.label} · ${STATUS_META[st].label}: ${count} sesión${count === 1 ? '' : 'es'}`}
+                    disabled={count === 0}
+                    style={{
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                      background: 'none', border: 'none', padding: 0, cursor: count > 0 ? 'pointer' : 'default',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    <span className="mono tnum" style={{ fontSize: 9, fontWeight: 700, color: count > 0 ? 'var(--text)' : 'var(--text-faint)' }}>{count > 0 ? count : ''}</span>
+                    <div className="chart-bar" style={{
+                      width: 12, height: barH,
+                      background: STATUS_META[st].color, borderRadius: '3px 3px 0 0',
+                      outline: isSelected ? `2px solid ${STATUS_META[st].color}` : 'none',
+                      outlineOffset: 2,
+                      transition: 'filter 0.1s',
+                    }}/>
+                  </button>
+                );
+              })}
             </div>
             <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{d.label}</span>
           </div>
-        );
-      })}
+        ))}
+      </div>
+
+      {selected && selectedBucket && (
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: STATUS_META[selected.status].color }}>
+              {selectedBucket.label} · {STATUS_META[selected.status].label} ({selectedDays.length})
+            </span>
+            <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 11 }}>Cerrar ×</button>
+          </div>
+          <div style={{ display: 'grid', gap: 4, maxHeight: 140, overflowY: 'auto' }}>
+            {selectedDays.map((s, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8, fontSize: 11, alignItems: 'baseline' }}>
+                <span className="mono" style={{ color: 'var(--text-muted)', fontWeight: 700, flexShrink: 0 }}>{fmtDayLabel(s.date)}</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -60,7 +131,7 @@ export default function DashboardPage() {
   const [todaySessions, setTodaySessions] = useState<{ id: string; athlete_id: string; completed: boolean }[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<Athlete | null>(null);
   const [completedCountMap, setCompletedCountMap] = useState<Record<string, number>>({});
-  const [monthlyRaw, setMonthlyRaw] = useState<{ date: string; athlete_id: string }[]>([]);
+  const [monthlyRaw, setMonthlyRaw] = useState<{ date: string; athlete_id: string; title: string; status: SessionStatus }[]>([]);
   const [monthlyMonths, setMonthlyMonths] = useState<{ key: string; label: string }[]>([]);
   const [monthlyLoading, setMonthlyLoading] = useState(true);
   const [monthlyAthleteFilter, setMonthlyAthleteFilter] = useState<string>('all');
@@ -127,10 +198,16 @@ export default function DashboardPage() {
     }
     const { data } = await supabase
       .from('sessions')
-      .select('date, athlete_id, session_feedback!inner(id)')
+      .select('date, athlete_id, title, session_blocks(session_exercises(sets(done)))')
       .gte('date', `${months[0].key}-01`);
     setMonthlyMonths(months);
-    setMonthlyRaw((data || []).map((s: any) => ({ date: s.date, athlete_id: s.athlete_id })));
+    setMonthlyRaw((data || []).map((s: any) => {
+      const allSets: { done: boolean }[] = (s.session_blocks || [])
+        .flatMap((b: any) => (b.session_exercises || []).flatMap((e: any) => e.sets || []));
+      const doneCount = allSets.filter(set => set.done).length;
+      const status: SessionStatus = doneCount === 0 ? 'none' : doneCount === allSets.length ? 'full' : 'partial';
+      return { date: s.date, athlete_id: s.athlete_id, title: s.title, status };
+    }));
     setMonthlyLoading(false);
   }, []);
 
@@ -157,13 +234,20 @@ export default function DashboardPage() {
   const onTrack = athletes.filter(a => a.status === 'on-track').length;
   const missed  = athletes.filter(a => a.status === 'missed').length;
 
-  const monthlySessions = useMemo<MonthlyCount[]>(() => {
+  const monthlySessions = useMemo<MonthlyBucket[]>(() => {
     const filtered = monthlyAthleteFilter === 'all'
       ? monthlyRaw
       : monthlyRaw.filter(s => s.athlete_id === monthlyAthleteFilter);
-    const counts: Record<string, number> = {};
-    filtered.forEach(s => { const k = s.date.slice(0, 7); counts[k] = (counts[k] || 0) + 1; });
-    return monthlyMonths.map(m => ({ ...m, count: counts[m.key] || 0 }));
+    return monthlyMonths.map(m => {
+      const sessions = filtered.filter(s => s.date.slice(0, 7) === m.key);
+      return {
+        ...m,
+        none: sessions.filter(s => s.status === 'none').length,
+        partial: sessions.filter(s => s.status === 'partial').length,
+        full: sessions.filter(s => s.status === 'full').length,
+        sessions: sessions.map(s => ({ date: s.date, title: s.title, status: s.status })),
+      };
+    });
   }, [monthlyRaw, monthlyMonths, monthlyAthleteFilter]);
 
   const athleteSessionMap = Object.fromEntries(todaySessions.map(s => [s.athlete_id, s.completed ? 'completed' : 'pending'])) as Record<string, 'completed' | 'pending'>;
@@ -328,8 +412,8 @@ export default function DashboardPage() {
           <div className="card" style={{ padding: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4, gap: 8 }}>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.04em' }}>Sesiones completadas por mes</div>
-                <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>Últimos 6 meses</div>
+                <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.04em' }}>Estado de sesiones por mes</div>
+                <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>Últimos 6 meses · click en una barra para ver los días</div>
               </div>
               <select
                 value={monthlyAthleteFilter}
