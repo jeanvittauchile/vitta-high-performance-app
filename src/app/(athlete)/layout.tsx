@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { AthleteProvider, useAthlete } from '@/lib/athlete-context';
 import { createClient } from '@/lib/supabase';
-import { VittaMark, HomeIcon, CalendarIcon, TrendIcon, UserIcon, LogOutIcon, LockIcon, CheckIcon, SunIcon, MoonIcon } from '@/components/icons';
+import { VittaMark, HomeIcon, CalendarIcon, TrendIcon, UserIcon, LogOutIcon, LockIcon, CheckIcon, SunIcon, MoonIcon, LayersIcon } from '@/components/icons';
 import { type TimerSound, SOUND_LABELS, TIMER_SOUND_KEY, playSound } from '@/lib/sounds';
 import type { ReactNode } from 'react';
 
@@ -13,6 +13,7 @@ const TABS = [
   { href: '/today',   label: 'Hoy',     Icon: HomeIcon     },
   { href: '/month',   label: 'Mes',     Icon: CalendarIcon },
   { href: '/stats',   label: 'Progreso',Icon: TrendIcon    },
+  { href: '/report',  label: 'Informe', Icon: LayersIcon   },
   { href: '/profile', label: 'Perfil',  Icon: UserIcon     },
 ];
 
@@ -90,6 +91,7 @@ function AthleteLayoutInner({ children }: { children: ReactNode }) {
     '/today':   'Tu sesión de hoy',
     '/month':   'Plan mensual',
     '/stats':   'Tu progreso',
+    '/report':  'Informe mensual',
     '/profile': 'Perfil deportivo',
   };
   const title      = titleMap[pathname] || 'Vitta';
@@ -245,7 +247,7 @@ function AthleteLayoutInner({ children }: { children: ReactNode }) {
 
       {/* Bottom nav */}
       <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+        display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)',
         background: 'var(--d-surface)',
         borderTop: '1px solid var(--d-border)',
         padding: '8px 8px 14px', gap: 4,

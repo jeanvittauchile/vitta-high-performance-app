@@ -2162,6 +2162,9 @@ export default function PlannerPage() {
             </div>
           </div>
           <div className="planner-header-actions" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <button className="btn btn-ghost" onClick={() => window.open(`/athletes/${id}/report`, '_blank')} title="Ver informe mensual del atleta">
+              <TrendIcon size={13}/>Informe
+            </button>
             <button className="btn btn-ghost" onClick={downloadMonthPDF} title="Descargar plan mensual en PDF">
               <DownloadIcon size={13}/>PDF
             </button>

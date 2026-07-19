@@ -236,6 +236,10 @@ export default function AthleteToday() {
         </Link>
         <span style={{ color: 'rgba(255,255,255,0.2)' }}>·</span>
         <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>Vista previa del atleta</span>
+        <span style={{ color: 'rgba(255,255,255,0.2)' }}>·</span>
+        <Link href={`/athletes/${athleteId}/report`} style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, textDecoration: 'none' }}>
+          Informe mensual
+        </Link>
         <span style={{ fontSize: 11, color: 'rgba(46,107,214,0.9)', background: 'rgba(46,107,214,0.15)', padding: '2px 8px', borderRadius: 4, fontWeight: 700, letterSpacing: '0.06em', marginLeft: 4 }}>MODO COACH</span>
         <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.7)' }}>{athleteName || '…'} · {dateLabel}</span>
       </div>

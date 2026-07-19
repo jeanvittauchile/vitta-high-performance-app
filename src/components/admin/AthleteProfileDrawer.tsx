@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { CATEGORIES } from '@/lib/constants';
-import { getCategoryIcon, XIcon, ChevronRight, UserIcon } from '@/components/icons';
+import { getCategoryIcon, XIcon, ChevronRight, UserIcon, TrendIcon } from '@/components/icons';
 import StatusPill from '@/components/badges/StatusPill';
 import type { Athlete } from '@/lib/types';
 
@@ -239,6 +239,13 @@ export default function AthleteProfileDrawer({ athlete, onClose }: Props) {
             onClick={() => router.push(`/athletes/${athlete.id}/progress`)}
           >
             <UserIcon size={13}/>Ver progreso
+          </button>
+          <button
+            className="btn btn-ghost"
+            style={{ width: '100%', justifyContent: 'center' }}
+            onClick={() => router.push(`/athletes/${athlete.id}/report`)}
+          >
+            <TrendIcon size={13}/>Informe mensual
           </button>
         </div>
       </div>
