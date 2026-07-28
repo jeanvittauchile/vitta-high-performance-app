@@ -1200,6 +1200,159 @@ function CopySessionModal({ session, athleteId, onClose, onCopied }: {
   );
 }
 
+// ─── Copy Sessions to Athletes Modal (multi-session, multi-athlete) ──
+
+async function copySessionToAthlete(
+  supabase: ReturnType<typeof createClient>,
+  session: DbSession,
+  targetAthleteId: string,
+  targetDate: string
+) {
+  const { data: newSession, error: e1 } = await supabase
+    .from('sessions')
+    .insert({ athlete_id: targetAthleteId, date: targetDate, title: session.title, duration: session.duration, rpe_target: session.rpe_target })
+    .select('id')
+    .single();
+  if (e1 || !newSession) return false;
+
+  const blocks = [...session.session_blocks].sort((a, b) => a.sort_order - b.sort_order);
+  for (const block of blocks) {
+    const { data: newBlock, error: e2 } = await supabase
+      .from('session_blocks')
+      .insert({ session_id: newSession.id, name: block.name, category: block.category, color: block.color, sort_order: block.sort_order })
+      .select('id')
+      .single();
+    if (e2 || !newBlock) continue;
+
+    const exs = [...block.session_exercises].sort((a, b) => a.sort_order - b.sort_order);
+    for (const ex of exs) {
+      const { data: newEx, error: e3 } = await supabase
+        .from('session_exercises')
+        .insert({ block_id: newBlock.id, exercise_id: ex.exercise_id, name: ex.name, level: ex.level, note: ex.note, sort_order: ex.sort_order, video_url: ex.video_url })
+        .select('id')
+        .single();
+      if (e3 || !newEx) continue;
+
+      if (ex.sets.length > 0) {
+        await supabase.from('sets').insert(
+          ex.sets.map(s => ({ session_ex_id: newEx.id, reps: s.reps, load: s.load, rpe_target: s.rpe_target, rest: s.rest, sort_order: s.sort_order, done: false }))
+        );
+      }
+    }
+  }
+  return true;
+}
+
+function CopySessionsToAthletesModal({ sessions, currentAthleteId, onClose, onDone }: {
+  sessions: DbSession[];
+  currentAthleteId: string;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [athletes, setAthletes] = useState<{ id: string; name: string; initials: string; color: string }[]>([]);
+  const [targetIds, setTargetIds] = useState<Set<string>>(new Set());
+  const [copying, setCopying] = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    createClient().from('athletes').select('id, name, initials, color').neq('id', currentAthleteId).order('name')
+      .then(({ data }) => setAthletes(data || []));
+  }, [currentAthleteId]);
+
+  function toggleTarget(aid: string) {
+    setTargetIds(prev => {
+      const next = new Set(prev);
+      if (next.has(aid)) next.delete(aid); else next.add(aid);
+      return next;
+    });
+  }
+
+  async function handleCopy() {
+    if (targetIds.size === 0 || sessions.length === 0) return;
+    setCopying(true); setError('');
+    const supabase = createClient();
+
+    let failed = 0;
+    for (const targetId of targetIds) {
+      for (const session of sessions) {
+        const ok = await copySessionToAthlete(supabase, session, targetId, session.date);
+        if (!ok) failed++;
+      }
+    }
+
+    setCopying(false);
+    if (failed > 0) setError(`${failed} sesión(es) no se pudieron copiar.`);
+    setDone(true);
+  }
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(14,25,54,0.55)', display: 'grid', placeItems: 'center' }}>
+      <div className="card admin-modal" style={{ padding: 24 }}>
+        {done ? (
+          <>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Sesiones copiadas</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>
+              {sessions.length} sesión(es) copiada(s) a {targetIds.size} atleta(s).
+            </div>
+            {error && <div style={{ fontSize: 12, color: '#D7474B', padding: '7px 10px', background: 'rgba(215,71,75,0.08)', borderRadius: 6, marginBottom: 16 }}>{error}</div>}
+            <button onClick={() => { onDone(); onClose(); }} className="btn btn-primary">Cerrar</button>
+          </>
+        ) : (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700 }}>Copiar sesiones a atletas</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>
+                  {sessions.length} sesión(es) seleccionada(s) · elige uno o más atletas destino
+                </div>
+              </div>
+              <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 20, lineHeight: 1 }}>×</button>
+            </div>
+
+            <div className="thin-scroll" style={{ display: 'grid', gap: 4, maxHeight: 110, overflowY: 'auto', marginBottom: 14, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface-2)' }}>
+              {sessions.map(s => (
+                <div key={s.id} style={{ fontSize: 12, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                  <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</span>
+                  <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>{s.date}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="thin-scroll" style={{ display: 'grid', gap: 5, maxHeight: 260, overflowY: 'auto', marginBottom: 14 }}>
+              {athletes.length === 0 ? (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '12px 0' }}>No hay otros atletas registrados.</div>
+              ) : athletes.map(a => {
+                const checked = targetIds.has(a.id);
+                return (
+                  <button key={a.id} onClick={() => toggleTarget(a.id)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 12px', borderRadius: 8, border: `2px solid ${checked ? '#2E6BD6' : 'var(--border)'}`, background: checked ? 'rgba(46,107,214,0.08)' : 'var(--surface-2)', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', width: '100%' }}>
+                    <input type="checkbox" checked={checked} readOnly style={{ width: 14, height: 14, pointerEvents: 'none' }}/>
+                    <div style={{ width: 32, height: 32, borderRadius: 16, background: a.color || '#2E6BD6', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                      {a.initials}
+                    </div>
+                    <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{a.name}</span>
+                    {checked && <CheckIcon size={14} stroke="#2E6BD6" strokeWidth={2.5}/>}
+                  </button>
+                );
+              })}
+            </div>
+
+            {error && <div style={{ fontSize: 12, color: '#D7474B', padding: '7px 10px', background: 'rgba(215,71,75,0.08)', borderRadius: 6, marginBottom: 12 }}>{error}</div>}
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={onClose} className="btn btn-ghost">Cancelar</button>
+              <button onClick={handleCopy} disabled={targetIds.size === 0 || copying} className="btn btn-primary">
+                <CopyIcon size={13}/>{copying ? 'Copiando...' : `Copiar a ${targetIds.size || ''} atleta(s)`}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main page ───────────────────────────────────────────────
 
 export default function PlannerPage() {
@@ -1236,6 +1389,9 @@ export default function PlannerPage() {
   const [applyingTemplate, setApplyingTemplate] = useState(false);
   const [copyingSession, setCopyingSession] = useState<DbSession | null>(null);
   const [showCopyPlanModal, setShowCopyPlanModal] = useState(false);
+  const [selectSessionsMode, setSelectSessionsMode] = useState(false);
+  const [selectedSessions, setSelectedSessions] = useState<Map<string, DbSession>>(new Map());
+  const [showCopySessionsModal, setShowCopySessionsModal] = useState(false);
   const [completedDates, setCompletedDates] = useState<Map<string, 'done' | 'partial'>>(new Map());
   // calendar drag state
   const [calDragging, setCalDragging] = useState<string | null>(null);
@@ -2135,6 +2291,14 @@ export default function PlannerPage() {
           onClose={() => setShowCopyPlanModal(false)}
         />
       )}
+      {showCopySessionsModal && (
+        <CopySessionsToAthletesModal
+          sessions={Array.from(selectedSessions.values())}
+          currentAthleteId={id}
+          onClose={() => setShowCopySessionsModal(false)}
+          onDone={() => { setSelectedSessions(new Map()); setSelectSessionsMode(false); }}
+        />
+      )}
       {editSession && (
         <EditSessionModal session={editSession} onClose={() => setEditSession(null)}
           onSaved={updated => {
@@ -2179,6 +2343,12 @@ export default function PlannerPage() {
             <button className="btn btn-ghost" onClick={() => setShowCopyPlanModal(true)} title="Copiar plan a otro atleta">
               <CopyIcon size={13}/>Copiar a atleta
             </button>
+            <button
+              className={selectSessionsMode ? 'btn btn-primary' : 'btn btn-ghost'}
+              onClick={() => { setSelectSessionsMode(m => !m); setSelectedSessions(new Map()); }}
+              title="Copiar sesiones sueltas a otros atletas">
+              <CheckIcon size={13}/>{selectSessionsMode ? 'Cancelar selección' : 'Seleccionar sesiones'}
+            </button>
             <div style={{ width: 1, height: 18, background: 'var(--border)', flexShrink: 0 }}/>
             <button className="btn btn-ghost" onClick={handleDeletePlan} style={{ color: '#D7474B' }}>
               <TrashIcon size={13}/>Eliminar plan
@@ -2189,6 +2359,19 @@ export default function PlannerPage() {
             </button>
           </div>
         </div>
+
+        {selectSessionsMode && (
+          <div className="card" style={{ padding: '10px 16px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #2E6BD6', background: 'rgba(46,107,214,0.06)' }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600 }}>
+              {selectedSessions.size === 0
+                ? 'Marca las sesiones que quieras copiar (usa el checkbox de cada sesión en el editor de abajo).'
+                : `${selectedSessions.size} sesión(es) seleccionada(s)`}
+            </div>
+            <button className="btn btn-primary btn-sm" disabled={selectedSessions.size === 0} onClick={() => setShowCopySessionsModal(true)}>
+              <CopyIcon size={12}/>Copiar a atletas
+            </button>
+          </div>
+        )}
 
         {/* Calendar */}
         <div className="card" style={{ padding: 16, marginBottom: 16 }}>
@@ -2364,6 +2547,18 @@ export default function PlannerPage() {
                 <div key={session.id}>
                   {/* Session header */}
                   <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 12 }}>
+                    {selectSessionsMode && (
+                      <button
+                        onClick={() => setSelectedSessions(prev => {
+                          const next = new Map(prev);
+                          if (next.has(session.id)) next.delete(session.id); else next.set(session.id, session);
+                          return next;
+                        })}
+                        title="Marcar sesión para copiar a otros atletas"
+                        style={{ background: selectedSessions.has(session.id) ? 'rgba(46,107,214,0.1)' : 'transparent', border: `2px solid ${selectedSessions.has(session.id) ? '#2E6BD6' : 'var(--border)'}`, borderRadius: 8, cursor: 'pointer', padding: '8px 10px', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                        <input type="checkbox" checked={selectedSessions.has(session.id)} readOnly style={{ width: 15, height: 15, pointerEvents: 'none' }}/>
+                      </button>
+                    )}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, flex: 1 }}>
                       {[
                         { label: 'Duración',     value: `${session.duration} min` },
