@@ -280,8 +280,15 @@ function AddBlockForm({ sessionId, onSaved, onCancel }: { sessionId: string; onS
 
 interface SetDraft { id: number; reps: string; load: string; rpe: string; rest: string; }
 
-function AddExerciseForm({ blockId, category, onSaved, onCancel }: {
-  blockId: string; category: CategoryId;
+interface LastLogSet { reps: number | null; load: number | null; rpe: number | null; }
+interface LastLog { date: string; sets: LastLogSet[]; }
+
+function fmtLastLogDate(d: string) {
+  return new Date(d + 'T00:00:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'short' });
+}
+
+function AddExerciseForm({ blockId, category, athleteId, onSaved, onCancel }: {
+  blockId: string; category: CategoryId; athleteId: string;
   onSaved: (newExId: string) => void; onCancel: () => void;
 }) {
   const [name, setName] = useState('');
@@ -297,6 +304,7 @@ function AddExerciseForm({ blockId, category, onSaved, onCancel }: {
   const [showSugg, setShowSugg] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [lastLogMap, setLastLogMap] = useState<Map<string, LastLog>>(new Map());
 
   const inp: React.CSSProperties = { padding: '6px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 12, fontFamily: 'inherit', color: 'var(--text)' };
   const si: React.CSSProperties  = { padding: '5px 7px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 11, fontFamily: 'inherit', color: 'var(--text)', width: '100%' };
@@ -306,7 +314,38 @@ function AddExerciseForm({ blockId, category, onSaved, onCancel }: {
       .then(({ data }) => setLibExercises((data as LibEx[]) || []));
   }, [category]);
 
+  useEffect(() => {
+    if (!athleteId) return;
+    createClient()
+      .from('sessions')
+      .select('date, session_blocks(session_exercises(name, sets(done, actual_reps, actual_load, actual_rpe, sort_order)))')
+      .eq('athlete_id', athleteId)
+      .order('date', { ascending: false })
+      .limit(60)
+      .then(({ data }) => {
+        const map = new Map<string, LastLog>();
+        for (const sess of (data as any[]) || []) {
+          for (const block of sess.session_blocks || []) {
+            for (const ex of block.session_exercises || []) {
+              const key = (ex.name as string).trim().toLowerCase();
+              if (map.has(key)) continue;
+              const doneSets = (ex.sets || [])
+                .filter((s: any) => s.done && (s.actual_reps != null || s.actual_load != null))
+                .sort((a: any, b: any) => a.sort_order - b.sort_order);
+              if (doneSets.length === 0) continue;
+              map.set(key, {
+                date: sess.date,
+                sets: doneSets.map((s: any) => ({ reps: s.actual_reps ?? null, load: s.actual_load ?? null, rpe: s.actual_rpe ?? null })),
+              });
+            }
+          }
+        }
+        setLastLogMap(map);
+      });
+  }, [athleteId]);
+
   const suggestions = libExercises.filter(e => !name.trim() || e.name.toLowerCase().includes(name.toLowerCase()));
+  const lastLog = lastLogMap.get(name.trim().toLowerCase());
 
   function addRow() {
     setDraftSets(prev => [...prev, { id: counter, reps: '', load: '', rpe: '', rest: '' }]);
@@ -417,6 +456,16 @@ function AddExerciseForm({ blockId, category, onSaved, onCancel }: {
           <option value="avanzado">Avanzado</option>
         </select>
       </div>
+
+      {lastLog && (
+        <div style={{ padding: '7px 10px', borderRadius: 7, background: 'rgba(74,138,240,0.10)', border: '1px solid rgba(74,138,240,0.25)', fontSize: 11, color: '#4A8AF0', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontWeight: 700 }}>Último registro</span>
+          <span style={{ color: 'rgba(74,138,240,0.6)' }}>· {fmtLastLogDate(lastLog.date)} ·</span>
+          <span className="mono" style={{ fontWeight: 600 }}>
+            {lastLog.sets.map((s, i) => `S${i + 1}: ${s.reps != null ? s.reps : '?'}×${s.load != null ? s.load + 'kg' : '?'}${s.rpe != null ? ` (RPE ${s.rpe})` : ''}`).join('  ')}
+          </span>
+        </div>
+      )}
 
       {/* Sets table */}
       <div style={{ background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
@@ -2847,6 +2896,7 @@ export default function PlannerPage() {
                                 <AddExerciseForm
                                   blockId={block.id}
                                   category={block.category}
+                                  athleteId={id}
                                   onSaved={async (newExId) => { setAddExerciseFor(null); await fetchDaySessions(); setExpandedEx(prev => new Set([...prev, newExId])); }}
                                   onCancel={() => setAddExerciseFor(null)}
                                 />
