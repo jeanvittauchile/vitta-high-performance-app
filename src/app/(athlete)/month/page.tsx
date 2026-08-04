@@ -37,15 +37,24 @@ function weekRangeLabel(year: number, month: number, w: number): string {
   return `${fmt(start)} – ${fmt(end)}`;
 }
 
-type PlanCell = DayType[];
-
-function defaultPlan(): PlanCell[][] {
-  return Array.from({ length: 4 }, () => Array.from({ length: 7 }, () => ['REST' as DayType]));
+// Number of Mon–Sun calendar rows needed to cover every day of the month
+// (5 for most months, 6 when the month spans 6 weeks, e.g. August 2026).
+function weeksInCalendarMonth(year: number, month: number): number {
+  const start = calendarStart(year, month);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const offset = Math.round((new Date(year, month - 1, 1).getTime() - start.getTime()) / 86400000);
+  return Math.ceil((daysInMonth + offset) / 7);
 }
 
-function normalizePlan(raw: any): PlanCell[][] {
-  if (!Array.isArray(raw)) return defaultPlan();
-  return Array.from({ length: 4 }, (_, wi) => {
+type PlanCell = DayType[];
+
+function defaultPlan(weeks = 4): PlanCell[][] {
+  return Array.from({ length: weeks }, () => Array.from({ length: 7 }, () => ['REST' as DayType]));
+}
+
+function normalizePlan(raw: any, weeks = 4): PlanCell[][] {
+  if (!Array.isArray(raw)) return defaultPlan(weeks);
+  return Array.from({ length: weeks }, (_, wi) => {
     const week = raw[wi];
     if (!Array.isArray(week)) return Array.from({ length: 7 }, () => ['REST' as DayType]);
     return Array.from({ length: 7 }, (_, di) => {
@@ -101,7 +110,7 @@ export default function MonthPage() {
       .maybeSingle()
       .then(({ data, error }) => {
         if (error) console.error('month_plans error:', error);
-        setPlan(data?.plan ? normalizePlan(data.plan) : null);
+        setPlan(data?.plan ? normalizePlan(data.plan, weeksInCalendarMonth(year, month)) : null);
         setLoading(false);
       });
   }, [athleteId, authLoading, year, month]);
@@ -144,7 +153,7 @@ export default function MonthPage() {
   useEffect(() => {
     if (year !== now.getFullYear() || month !== now.getMonth() + 1) { setExpandedWeek(null); return; }
     const todayISO = now.toISOString().slice(0, 10);
-    for (let w = 0; w < 4; w++) {
+    for (let w = 0; w < weeksInCalendarMonth(year, month); w++) {
       for (let d = 0; d < 7; d++) {
         if (cellDate(year, month, w, d).toISOString().slice(0, 10) === todayISO) {
           setExpandedWeek(w);
@@ -164,7 +173,7 @@ export default function MonthPage() {
   }
 
   const todayISO = now.toISOString().slice(0, 10);
-  const displayPlan = plan ?? defaultPlan();
+  const displayPlan = plan ?? defaultPlan(weeksInCalendarMonth(year, month));
 
   // Computed stats
   const totalTrainDays = plan
@@ -209,7 +218,7 @@ export default function MonthPage() {
           ))}
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 9, color: 'var(--d-text-faint)', letterSpacing: '0.04em' }}>
-          <span>S1</span><span>S2</span><span>S3</span><span>S4</span>
+          {displayPlan.map((_, i) => <span key={i}>S{i + 1}</span>)}
         </div>
 
         {/* Monthly stats strip */}

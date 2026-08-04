@@ -77,15 +77,24 @@ function toISO(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-type PlanCell = DayType[];
-
-function defaultPlan(): PlanCell[][] {
-  return Array.from({ length: 4 }, () => Array.from({ length: 7 }, () => ['REST' as DayType]));
+// Number of Mon–Sun calendar rows needed to cover every day of the month
+// (5 for most months, 6 when the month spans 6 weeks, e.g. August 2026).
+function weeksInCalendarMonth(year: number, month: number): number {
+  const start = calendarStart(year, month);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const offset = Math.round((new Date(year, month - 1, 1).getTime() - start.getTime()) / 86400000);
+  return Math.ceil((daysInMonth + offset) / 7);
 }
 
-function normalizePlan(raw: any): PlanCell[][] {
-  if (!Array.isArray(raw)) return defaultPlan();
-  return Array.from({ length: 4 }, (_, wi) => {
+type PlanCell = DayType[];
+
+function defaultPlan(weeks = 4): PlanCell[][] {
+  return Array.from({ length: weeks }, () => Array.from({ length: 7 }, () => ['REST' as DayType]));
+}
+
+function normalizePlan(raw: any, weeks = 4): PlanCell[][] {
+  if (!Array.isArray(raw)) return defaultPlan(weeks);
+  return Array.from({ length: weeks }, (_, wi) => {
     const week = raw[wi];
     if (!Array.isArray(week)) return Array.from({ length: 7 }, () => ['REST' as DayType]);
     return Array.from({ length: 7 }, (_, di) => {
@@ -641,7 +650,7 @@ function CopyPlanToAthleteModal({ currentAthleteId, year, month, plan, onClose }
 
     if (withSessions) {
       const start = calendarStart(year, month);
-      const end   = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 27);
+      const end   = new Date(start.getFullYear(), start.getMonth(), start.getDate() + weeksInCalendarMonth(year, month) * 7 - 1);
       const { data: sessions } = await supabase
         .from('sessions')
         .select(`id, title, duration, rpe_target, date, session_blocks ( id, name, category, color, sort_order, session_exercises ( id, exercise_id, name, level, note, sort_order, video_url, sets ( id, reps, load, rpe_target, rest, sort_order ) ) )`)
@@ -1418,7 +1427,7 @@ export default function PlannerPage() {
   const [bestsLoading, setBestsLoading] = useState(true);
   const [dragOverBlock, setDragOverBlock] = useState<string | null>(null);
   const [dragBlock, setDragBlock] = useState<{ id: string; sessionId: string } | null>(null);
-  const [monthPlan, setMonthPlan] = useState<PlanCell[][]>(defaultPlan());
+  const [monthPlan, setMonthPlan] = useState<PlanCell[][]>(defaultPlan(weeksInCalendarMonth(now.getFullYear(), now.getMonth() + 1)));
   // date -> first session title (for calendar display)
   const [monthSessionMap, setMonthSessionMap] = useState<Map<string, string>>(new Map());
   const [selectedDay, setSelectedDay] = useState<{ w: number; d: number } | null>(null);
@@ -1477,14 +1486,14 @@ export default function PlannerPage() {
     if (!id) return;
     const supabase = createClient();
     supabase.from('month_plans').select('plan').eq('athlete_id', id).eq('year', currentYear).eq('month', currentMonth).maybeSingle()
-      .then(({ data }) => setMonthPlan(normalizePlan(data?.plan)));
+      .then(({ data }) => setMonthPlan(normalizePlan(data?.plan, weeksInCalendarMonth(currentYear, currentMonth))));
   }, [id, currentYear, currentMonth]);
 
   // ── Fetch session titles + completion status for calendar month ──
   useEffect(() => {
     if (!id) return;
     const start = calendarStart(currentYear, currentMonth);
-    const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 4 * 7 - 1);
+    const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + weeksInCalendarMonth(currentYear, currentMonth) * 7 - 1);
     const supabase = createClient();
     supabase.from('sessions')
       .select('date, title, session_feedback(id)')
@@ -1608,7 +1617,8 @@ export default function PlannerPage() {
   async function downloadMonthPDF() {
     const supabase = createClient();
     const start = calendarStart(currentYear, currentMonth);
-    const endDate = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 28 - 1);
+    const pdfWeeks = weeksInCalendarMonth(currentYear, currentMonth);
+    const endDate = new Date(start.getFullYear(), start.getMonth(), start.getDate() + pdfWeeks * 7 - 1);
     const { data } = await supabase
       .from('sessions')
       .select(`id, title, duration, rpe_target, date,
@@ -1690,7 +1700,7 @@ export default function PlannerPage() {
       }
     </style></head><body>`;
 
-    for (let wi = 0; wi < 4; wi++) {
+    for (let wi = 0; wi < pdfWeeks; wi++) {
       // collect rest days and training days for this week
       const trainingDays: { di: number; date: Date; dateISO: string; sessions: any[] }[] = [];
       const restDayNames: string[] = [];
@@ -1995,7 +2005,7 @@ export default function PlannerPage() {
     if (selectedDay) {
       const srcDate = toISO(cellDate(currentYear, currentMonth, selectedDay.w, selectedDay.d));
       if (srcDate === fromDate) {
-        for (let w = 0; w < 4; w++) {
+        for (let w = 0; w < monthPlan.length; w++) {
           for (let d = 0; d < 7; d++) {
             if (toISO(cellDate(currentYear, currentMonth, w, d)) === toDate) {
               setSelectedDay({ w, d });
@@ -2025,7 +2035,8 @@ export default function PlannerPage() {
     try {
       const supabase = createClient();
       const prevStart = calendarStart(prevYear, prevMonthNum);
-      const prevEnd = new Date(prevStart.getFullYear(), prevStart.getMonth(), prevStart.getDate() + 27);
+      const prevWeeks = weeksInCalendarMonth(prevYear, prevMonthNum);
+      const prevEnd = new Date(prevStart.getFullYear(), prevStart.getMonth(), prevStart.getDate() + prevWeeks * 7 - 1);
 
       const { data: prevSessions, error: sessErr } = await supabase
         .from('sessions')
@@ -2051,7 +2062,8 @@ export default function PlannerPage() {
       }
 
       const currStart = calendarStart(currentYear, currentMonth);
-      const currEnd = new Date(currStart.getFullYear(), currStart.getMonth(), currStart.getDate() + 27);
+      const currWeeks = weeksInCalendarMonth(currentYear, currentMonth);
+      const currEnd = new Date(currStart.getFullYear(), currStart.getMonth(), currStart.getDate() + currWeeks * 7 - 1);
       const { data: existingSessions } = await supabase
         .from('sessions').select('date')
         .eq('athlete_id', id)
@@ -2065,9 +2077,10 @@ export default function PlannerPage() {
       for (const session of prevSessions) {
         const prevDate = new Date(session.date + 'T12:00:00');
         const dayOffset = Math.round((prevDate.getTime() - prevStart.getTime()) / 86400000);
-        if (dayOffset < 0 || dayOffset >= 28) continue;
+        if (dayOffset < 0 || dayOffset >= prevWeeks * 7) continue;
         const w = Math.floor(dayOffset / 7);
         const d = dayOffset % 7;
+        if (w >= currWeeks) continue;
         const targetDate = toISO(cellDate(currentYear, currentMonth, w, d));
         if (existingDates.has(targetDate)) continue;
 
@@ -2127,7 +2140,7 @@ export default function PlannerPage() {
   }
 
   async function handleApplyTemplate(tpl: DbPlanTemplate) {
-    const plan = normalizePlan(tpl.plan);
+    const plan = normalizePlan(tpl.plan, weeksInCalendarMonth(currentYear, currentMonth));
     setApplyingTemplate(true);
     try {
       await savePlan(plan);
@@ -2135,7 +2148,9 @@ export default function PlannerPage() {
       if (Object.keys(tpl.exercises).length > 0) {
         const supabase = createClient();
 
-        // Fetch existing session dates to avoid duplicates
+        // Fetch existing session dates to avoid duplicates. Bounded to the template's
+        // own 4-week pattern (below), not the month's real week count — weeks 5–6 of
+        // longer months are left for the coach to fill in by hand.
         const start = calendarStart(currentYear, currentMonth);
         const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 27);
         const { data: existingSessions } = await supabase
@@ -2248,7 +2263,7 @@ export default function PlannerPage() {
     }
     await supabase.from('month_plans').delete()
       .eq('athlete_id', id).eq('year', currentYear).eq('month', currentMonth);
-    setMonthPlan(defaultPlan());
+    setMonthPlan(defaultPlan(weeksInCalendarMonth(currentYear, currentMonth)));
     setMonthSessionMap(new Map());
     setDaySessions([]);
     setSelectedDay(null);
