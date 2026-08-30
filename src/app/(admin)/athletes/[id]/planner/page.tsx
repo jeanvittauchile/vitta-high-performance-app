@@ -313,8 +313,8 @@ function fmtLastLogDate(d: string) {
 const DEFAULT_SET_COUNT = 3;
 const DEFAULT_REST = '2:00';
 
-function ExercisePickerPanel({ blockId, category, athleteId, existingNames, onExerciseAdded, onDone }: {
-  blockId: string; category: CategoryId; athleteId: string;
+function ExercisePickerPanel({ blockId, category, athleteId, bests, existingNames, onExerciseAdded, onDone }: {
+  blockId: string; category: CategoryId; athleteId: string; bests: BestEntry[];
   existingNames: Set<string>;
   onExerciseAdded: (ex: DbExercise) => void;
   onDone: () => void;
@@ -362,6 +362,11 @@ function ExercisePickerPanel({ blockId, category, athleteId, existingNames, onEx
   }, [athleteId]);
 
   const filtered = libExercises.filter(e => !search.trim() || e.name.toLowerCase().includes(search.trim().toLowerCase()));
+  const bestsByName = useMemo(() => {
+    const map = new Map<string, BestEntry>();
+    for (const b of bests) map.set(b.name.trim().toLowerCase(), b);
+    return map;
+  }, [bests]);
 
   async function addExercise(name: string, exerciseId: string | null, level: LevelId, videoUrl: string | null) {
     const key = name.trim().toLowerCase();
@@ -406,6 +411,7 @@ function ExercisePickerPanel({ blockId, category, athleteId, existingNames, onEx
           const key = ex.name.trim().toLowerCase();
           const already = existingNames.has(key);
           const last = lastLogMap.get(key);
+          const best = bestsByName.get(key);
           const busy = addingKey === key;
           return (
             <button key={ex.id} type="button" disabled={busy}
@@ -422,9 +428,14 @@ function ExercisePickerPanel({ blockId, category, athleteId, existingNames, onEx
                 {already && <CheckIcon size={10} stroke="#2BB673"/>}
                 {busy ? '...' : ex.name}
               </span>
-              {last && !busy && (
+              {!busy && last && (
                 <span className="mono" style={{ fontSize: 9, color: 'var(--text-muted)' }}>
                   Últ: {last.sets[0]?.reps ?? '—'}×{last.sets[0]?.load ?? '—'}kg · {fmtLastLogDate(last.date)}
+                </span>
+              )}
+              {!busy && best && (
+                <span className="mono" style={{ fontSize: 9, color: '#4A8AF0', fontWeight: 700 }}>
+                  1RM est. {fmtLoad(best.rm1)}kg
                 </span>
               )}
             </button>
@@ -2893,6 +2904,7 @@ export default function PlannerPage() {
                                   blockId={block.id}
                                   category={block.category}
                                   athleteId={id}
+                                  bests={bests}
                                   existingNames={new Set(block.session_exercises.map(e => e.name.trim().toLowerCase()))}
                                   onExerciseAdded={newEx => {
                                     setDaySessions(prev => prev.map(s => ({
