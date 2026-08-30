@@ -255,40 +255,53 @@ function EditSessionModal({ session, onClose, onSaved }: {
   );
 }
 
-// ─── Add Block inline form ───────────────────────────────────
+// ─── Add Block: one-click category chips ─────────────────────
+// Clicking a chip creates the block immediately (name = category label),
+// so mixing several categories in one session is just a few clicks.
 
-function AddBlockForm({ sessionId, onSaved, onCancel }: { sessionId: string; onSaved: () => void; onCancel: () => void }) {
-  const [name, setName] = useState('');
-  const [category, setCategory] = useState<CategoryId>('empuje');
-  const [saving, setSaving] = useState(false);
+function BlockCategoryChips({ onPick, onDone }: { onPick: (categoryId: CategoryId) => Promise<void>; onDone: () => void }) {
+  const [pickingId, setPickingId] = useState<CategoryId | null>(null);
 
-  const inp: React.CSSProperties = { padding: '6px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 12, fontFamily: 'inherit', color: 'var(--text)' };
-
-  async function save() {
-    if (!name.trim()) return;
-    setSaving(true);
-    const cat = CATEGORIES[category];
-    const supabase = createClient();
-    await supabase.from('session_blocks').insert({ session_id: sessionId, name: name.trim(), category, color: cat?.color || '#2E6BD6', sort_order: 0 });
-    setSaving(false);
-    onSaved();
+  async function handlePick(catId: CategoryId) {
+    if (pickingId) return;
+    setPickingId(catId);
+    await onPick(catId);
+    setPickingId(null);
   }
 
   return (
-    <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 0' }}>
-      <input placeholder="Nombre del bloque" value={name} onChange={e => setName(e.target.value)} style={{ ...inp, flex: 1 }}/>
-      <select value={category} onChange={e => setCategory(e.target.value as CategoryId)} style={inp}>
-        {Object.values(CATEGORIES).map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-      </select>
-      <button onClick={save} disabled={saving || !name.trim()} className="btn btn-primary btn-sm">{saving ? '...' : 'Añadir'}</button>
-      <button onClick={onCancel} className="btn btn-ghost btn-sm">Cancelar</button>
+    <div style={{ marginTop: 8, padding: 10, background: 'rgba(46,107,214,0.05)', borderRadius: 10, border: '1px solid var(--border)' }}>
+      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 8 }}>Elige el tipo de bloque a añadir · puedes repetir para mezclar varios</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {Object.values(CATEGORIES).map(c => {
+          const Ic = getCategoryIcon(c.id);
+          const busy = pickingId === c.id;
+          return (
+            <button key={c.id} type="button" disabled={!!pickingId} onClick={() => handlePick(c.id as CategoryId)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8,
+                border: `1px solid ${c.color}40`, background: `${c.color}14`, color: c.color,
+                cursor: pickingId ? 'default' : 'pointer', fontFamily: 'inherit', fontSize: 11, fontWeight: 700,
+                opacity: pickingId && !busy ? 0.4 : 1,
+              }}>
+              <Ic size={12} stroke="currentColor"/>
+              {busy ? '...' : c.label}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+        <button type="button" onClick={onDone} className="btn btn-ghost btn-sm">Cerrar</button>
+      </div>
     </div>
   );
 }
 
-// ─── Add Exercise inline form ────────────────────────────────
-
-interface SetDraft { id: number; reps: string; load: string; rpe: string; rest: string; }
+// ─── Add Exercise: clickable card picker ─────────────────────
+// Click a card to add that exercise instantly (pre-filled with the athlete's
+// last logged sets when available), so several exercises can be added in a
+// row without reopening a form each time. Loads are then edited cell-by-cell
+// in the sets grid that appears right below (see the exercise render below).
 
 interface LastLogSet { reps: number | null; load: number | null; rpe: number | null; }
 interface LastLog { date: string; sets: LastLogSet[]; }
@@ -297,33 +310,21 @@ function fmtLastLogDate(d: string) {
   return new Date(d + 'T00:00:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'short' });
 }
 
-function AddExerciseForm({ blockId, category, athleteId, bests, onSaved, onCancel }: {
-  blockId: string; category: CategoryId; athleteId: string; bests: BestEntry[];
-  onSaved: (newExId: string) => void; onCancel: () => void;
+const DEFAULT_SET_COUNT = 3;
+const DEFAULT_REST = '2:00';
+
+function ExercisePickerPanel({ blockId, category, athleteId, existingNames, onExerciseAdded, onDone }: {
+  blockId: string; category: CategoryId; athleteId: string;
+  existingNames: Set<string>;
+  onExerciseAdded: (ex: DbExercise) => void;
+  onDone: () => void;
 }) {
-  const [name, setName] = useState('');
-  const [level, setLevel] = useState<LevelId>('basico');
-  const [note, setNote] = useState('');
-  const [videoUrl, setVideoUrl] = useState('');
-  const [exerciseId, setExerciseId] = useState<string | null>(null);
-  const [draftSets, setDraftSets] = useState<SetDraft[]>([
-    { id: 1, reps: '', load: '', rpe: '', rest: '' },
-  ]);
-  const [counter, setCounter] = useState(2);
+  const [search, setSearch] = useState('');
   const [libExercises, setLibExercises] = useState<LibEx[]>([]);
-  const [showSugg, setShowSugg] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState('');
   const [lastLogMap, setLastLogMap] = useState<Map<string, LastLog>>(new Map());
-
-  const matchedBest = useMemo(() => {
-    const n = name.trim().toLowerCase();
-    if (!n) return null;
-    return bests.find(b => b.name.trim().toLowerCase() === n) ?? null;
-  }, [bests, name]);
-
-  const inp: React.CSSProperties = { padding: '6px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 12, fontFamily: 'inherit', color: 'var(--text)' };
-  const si: React.CSSProperties  = { padding: '5px 7px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 11, fontFamily: 'inherit', color: 'var(--text)', width: '100%' };
+  const [addingKey, setAddingKey] = useState<string | null>(null);
+  const [customName, setCustomName] = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
     createClient().from('exercises').select('id, name, level, video_url, gif_url').eq('category', category).order('name')
@@ -360,183 +361,93 @@ function AddExerciseForm({ blockId, category, athleteId, bests, onSaved, onCance
       });
   }, [athleteId]);
 
-  const suggestions = libExercises.filter(e => !name.trim() || e.name.toLowerCase().includes(name.toLowerCase()));
-  const lastLog = lastLogMap.get(name.trim().toLowerCase());
+  const filtered = libExercises.filter(e => !search.trim() || e.name.toLowerCase().includes(search.trim().toLowerCase()));
 
-  function addRow() {
-    setDraftSets(prev => [...prev, { id: counter, reps: '', load: '', rpe: '', rest: '' }]);
-    setCounter(c => c + 1);
-  }
-
-  function dupRow(idx: number) {
-    const s = draftSets[idx];
-    setDraftSets(prev => [...prev.slice(0, idx + 1), { ...s, id: counter }, ...prev.slice(idx + 1)]);
-    setCounter(c => c + 1);
-  }
-
-  function delRow(idx: number) {
-    setDraftSets(prev => prev.filter((_, i) => i !== idx));
-  }
-
-  function updateRow(idx: number, field: keyof Omit<SetDraft, 'id'>, value: string) {
-    setDraftSets(prev => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
-  }
-
-  async function save() {
-    if (!name.trim()) return;
-    setSaving(true); setSaveError('');
+  async function addExercise(name: string, exerciseId: string | null, level: LevelId, videoUrl: string | null) {
+    const key = name.trim().toLowerCase();
+    if (!name.trim() || addingKey) return;
+    setAddingKey(key);
+    setError('');
     const supabase = createClient();
     const { data: existing } = await supabase.from('session_exercises').select('sort_order').eq('block_id', blockId).order('sort_order', { ascending: false }).limit(1);
     const nextSort = ((existing?.[0]?.sort_order ?? -1) as number) + 1;
     const { data: exData, error: exErr } = await supabase
       .from('session_exercises')
-      .insert({ block_id: blockId, exercise_id: exerciseId, name: name.trim(), level, note: note.trim() || null, sort_order: nextSort, video_url: videoUrl.trim() || null })
-      .select('id').single();
-    if (exErr) { setSaveError(exErr.message); setSaving(false); return; }
-    if (exData && draftSets.length > 0) {
-      const { error: setsErr } = await supabase.from('sets').insert(
-        draftSets.map((s, i) => ({
-          session_ex_id: exData.id,
-          reps: s.reps || null,
-          load: s.load || null,
-          rpe_target: s.rpe ? Number(s.rpe) : null,
-          rest: s.rest || null,
-          done: false,
-          sort_order: i,
-        }))
-      );
-      if (setsErr) { setSaveError(setsErr.message); setSaving(false); return; }
-    }
-    setSaving(false);
-    onSaved(exData.id);
+      .insert({ block_id: blockId, exercise_id: exerciseId, name: name.trim(), level, note: null, sort_order: nextSort, video_url: videoUrl })
+      .select('id, exercise_id, name, level, note, sort_order, video_url')
+      .single();
+    if (exErr || !exData) { setError(exErr?.message || 'Error al añadir el ejercicio.'); setAddingKey(null); return; }
+
+    const lastLog = lastLogMap.get(key);
+    const draftSets = lastLog && lastLog.sets.length > 0
+      ? lastLog.sets.map(s => ({ reps: s.reps != null ? String(s.reps) : null, load: s.load != null ? String(s.load) : null, rpe_target: null as number | null, rest: DEFAULT_REST }))
+      : Array.from({ length: DEFAULT_SET_COUNT }, () => ({ reps: null as string | null, load: null as string | null, rpe_target: null as number | null, rest: DEFAULT_REST }));
+
+    const { data: setsData } = await supabase.from('sets').insert(
+      draftSets.map((s, i) => ({ session_ex_id: exData.id, reps: s.reps, load: s.load, rpe_target: s.rpe_target, rest: s.rest, done: false, sort_order: i }))
+    ).select('id, reps, load, rpe_target, rest, sort_order');
+
+    onExerciseAdded({ ...exData, sets: (setsData || []) as DbSet[] } as DbExercise);
+    setAddingKey(null);
   }
 
   return (
     <div style={{ marginTop: 8, padding: 12, background: 'rgba(46,107,214,0.05)', borderRadius: 10, border: '1px solid var(--border)', display: 'grid', gap: 10 }}>
+      <input
+        autoFocus
+        placeholder="Buscar ejercicio..."
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 12, fontFamily: 'inherit', color: 'var(--text)' }}
+      />
 
-      {/* Name with dropdown + level */}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <div style={{ flex: 1, position: 'relative' }}>
-          <div style={{ position: 'relative' }}>
-            <input
-              placeholder="Buscar en biblioteca de ejercicios..."
-              value={name}
-              onChange={e => { setName(e.target.value); setExerciseId(null); setShowSugg(true); }}
-              onFocus={() => setShowSugg(true)}
-              onBlur={() => setTimeout(() => setShowSugg(false), 160)}
-              style={{ ...inp, width: '100%', boxSizing: 'border-box', paddingRight: 28 }}
-            />
-            <button
-              type="button"
-              onMouseDown={e => { e.preventDefault(); setShowSugg(v => !v); }}
-              style={{ position: 'absolute', right: 7, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 2, display: 'grid', placeItems: 'center' }}
-            >
-              <ChevronDown size={11}/>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 220, overflowY: 'auto' }}>
+        {filtered.map(ex => {
+          const key = ex.name.trim().toLowerCase();
+          const already = existingNames.has(key);
+          const last = lastLogMap.get(key);
+          const busy = addingKey === key;
+          return (
+            <button key={ex.id} type="button" disabled={busy}
+              onClick={() => addExercise(ex.name, ex.id, ex.level, ex.video_url || ex.gif_url || null)}
+              title={already ? 'Ya está en este bloque · clic para añadirlo de nuevo' : 'Añadir al bloque'}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2,
+                padding: '7px 11px', borderRadius: 8, cursor: busy ? 'default' : 'pointer',
+                border: already ? '1px solid rgba(43,182,115,0.4)' : '1px solid var(--border)',
+                background: already ? 'rgba(43,182,115,0.08)' : 'var(--surface)',
+                fontFamily: 'inherit', opacity: busy ? 0.5 : 1, textAlign: 'left',
+              }}>
+              <span style={{ fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
+                {already && <CheckIcon size={10} stroke="#2BB673"/>}
+                {busy ? '...' : ex.name}
+              </span>
+              {last && !busy && (
+                <span className="mono" style={{ fontSize: 9, color: 'var(--text-muted)' }}>
+                  Últ: {last.sets[0]?.reps ?? '—'}×{last.sets[0]?.load ?? '—'}kg · {fmtLastLogDate(last.date)}
+                </span>
+              )}
             </button>
-          </div>
-          {showSugg && suggestions.length > 0 && (
-            <div style={{ position: 'absolute', top: 'calc(100% + 2px)', left: 0, right: 0, zIndex: 200, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.18)', maxHeight: 220, overflowY: 'auto' }}>
-              {!name.trim() && (
-                <div style={{ padding: '5px 12px 4px', fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>
-                  Biblioteca · {suggestions.length} ejercicios
-                </div>
-              )}
-              {suggestions.slice(0, 14).map((ex, i) => (
-                <button key={ex.id} type="button"
-                  onMouseDown={() => {
-                    setName(ex.name);
-                    setExerciseId(ex.id);
-                    setLevel(ex.level);
-                    if (ex.video_url || ex.gif_url) setVideoUrl(ex.video_url || ex.gif_url || '');
-                    setShowSugg(false);
-                  }}
-                  style={{ width: '100%', padding: '8px 12px', textAlign: 'left', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text)', borderTop: i > 0 ? '1px solid var(--border)' : 'none', fontFamily: 'inherit' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                >
-                  <span>{ex.name}</span>
-                  {(ex.video_url || ex.gif_url) && <span style={{ fontSize: 10, color: 'var(--vitta-blue)', marginLeft: 6 }}>· video</span>}
-                </button>
-              ))}
-              {suggestions.length > 14 && (
-                <div style={{ padding: '5px 12px', fontSize: 10, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', fontStyle: 'italic' }}>
-                  + {suggestions.length - 14} más · escribe para filtrar
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-        <select value={level} onChange={e => setLevel(e.target.value as LevelId)} style={inp}>
-          <option value="basico">Básico</option>
-          <option value="intermedio">Intermedio</option>
-          <option value="avanzado">Avanzado</option>
-        </select>
+          );
+        })}
+        {filtered.length === 0 && (
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '8px 0' }}>Sin resultados en la biblioteca.</div>
+        )}
       </div>
 
-      {lastLog && (
-        <div style={{ padding: '7px 10px', borderRadius: 7, background: 'rgba(74,138,240,0.10)', border: '1px solid rgba(74,138,240,0.25)', fontSize: 11, color: '#4A8AF0', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontWeight: 700 }}>Último registro</span>
-          <span style={{ color: 'rgba(74,138,240,0.6)' }}>· {fmtLastLogDate(lastLog.date)} ·</span>
-          <span className="mono" style={{ fontWeight: 600 }}>
-            {lastLog.sets.map((s, i) => `S${i + 1}: ${s.reps != null ? s.reps : '?'}×${s.load != null ? s.load + 'kg' : '?'}${s.rpe != null ? ` (RPE ${s.rpe})` : ''}`).join('  ')}
-          </span>
-        </div>
-      )}
-
-      {/* Best mark so far, like Hevy's "previous" hint */}
-      {matchedBest && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: 'rgba(46,107,214,0.08)', border: '1px solid rgba(46,107,214,0.25)', borderRadius: 8 }}>
-          <TrendIcon size={12} stroke="var(--vitta-blue-bright)"/>
-          <div style={{ fontSize: 11, flex: 1, minWidth: 0 }}>
-            <span style={{ fontWeight: 700 }}>Mejor marca:</span>{' '}
-            {matchedBest.reps}×{fmtLoad(matchedBest.load)}kg
-            <span style={{ color: 'var(--text-muted)' }}> · 1RM est. {fmtLoad(matchedBest.rm1)}kg</span>
-          </div>
-          <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 10, flexShrink: 0 }}
-            title="Rellenar la primera serie con esta marca"
-            onClick={() => setDraftSets(prev => prev.map((s, i) => i === 0 ? { ...s, reps: s.reps || String(matchedBest.reps), load: s.load || String(matchedBest.load) } : s))}>
-            Usar
-          </button>
-        </div>
-      )}
-
-      {/* Sets table */}
-      <div style={{ background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 1fr 48px 1fr 42px', gap: 6, padding: '5px 10px', fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>
-          <div>#</div><div>REPS</div><div>KG</div><div>RPE</div><div>DESCANSO</div><div/>
-        </div>
-        {draftSets.map((s, i) => (
-          <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '24px 1fr 1fr 48px 1fr 42px', gap: 6, padding: '5px 10px', alignItems: 'center', borderTop: i > 0 ? '1px solid var(--border)' : undefined }}>
-            <span className="mono" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)' }}>{i + 1}</span>
-            <input placeholder="5"   value={s.reps} onChange={e => updateRow(i, 'reps', e.target.value)} style={si}/>
-            <input placeholder="—"   type="number" min={0} step={0.5} value={s.load} onChange={e => updateRow(i, 'load', e.target.value)} style={si}/>
-            <input placeholder="7"   type="number" min={1} max={10} step={0.5} value={s.rpe} onChange={e => updateRow(i, 'rpe', e.target.value)} style={si}/>
-            <input placeholder="2:00" value={s.rest} onChange={e => updateRow(i, 'rest', e.target.value)} style={si}/>
-            <div style={{ display: 'flex', gap: 1 }}>
-              <button type="button" onClick={() => dupRow(i)} title="Copiar serie"
-                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '2px 4px', borderRadius: 4, display: 'grid', placeItems: 'center' }}>
-                <CopyIcon size={11}/>
-              </button>
-              <button type="button" onClick={() => delRow(i)} title="Eliminar serie" disabled={draftSets.length === 1}
-                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#D7474B', padding: '2px 4px', borderRadius: 4, display: 'grid', placeItems: 'center', opacity: draftSets.length === 1 ? 0.25 : 0.7 }}>
-                <XIcon size={11}/>
-              </button>
-            </div>
-          </div>
-        ))}
-        <div style={{ padding: '6px 10px', borderTop: '1px solid var(--border)' }}>
-          <button type="button" onClick={addRow} className="btn btn-ghost btn-sm" style={{ fontSize: 10 }}>
-            <PlusIcon size={10}/>Añadir serie
-          </button>
-        </div>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', paddingTop: 8, borderTop: '1px solid var(--border)' }}>
+        <input placeholder="Ejercicio personalizado (no está en la biblioteca)" value={customName} onChange={e => setCustomName(e.target.value)}
+          style={{ flex: 1, padding: '6px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 12, fontFamily: 'inherit', color: 'var(--text)' }}/>
+        <button type="button" disabled={!customName.trim() || !!addingKey} className="btn btn-ghost btn-sm"
+          onClick={() => { const n = customName; setCustomName(''); addExercise(n, null, 'basico', null); }}>
+          <PlusIcon size={10}/>Añadir
+        </button>
       </div>
 
-      <input placeholder="Nota / descripción (opcional)" value={note} onChange={e => setNote(e.target.value)} style={{ ...inp, width: '100%', boxSizing: 'border-box' }}/>
-      <input placeholder="URL de video o GIF (opcional)" value={videoUrl} onChange={e => setVideoUrl(e.target.value)} style={{ ...inp, width: '100%', boxSizing: 'border-box' }}/>
-      {saveError && <div style={{ fontSize: 11, color: 'var(--red)', padding: '5px 8px', background: 'rgba(215,71,75,0.08)', borderRadius: 5 }}>{saveError}</div>}
-      <div style={{ display: 'flex', gap: 6 }}>
-        <button onClick={save} disabled={saving || !name.trim()} className="btn btn-primary btn-sm">{saving ? '...' : 'Añadir ejercicio'}</button>
-        <button onClick={onCancel} className="btn btn-ghost btn-sm">Cancelar</button>
+      {error && <div style={{ fontSize: 11, color: 'var(--red)', padding: '5px 8px', background: 'rgba(215,71,75,0.08)', borderRadius: 5 }}>{error}</div>}
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button type="button" onClick={onDone} className="btn btn-primary btn-sm">Listo</button>
       </div>
     </div>
   );
@@ -1880,6 +1791,23 @@ export default function PlannerPage() {
     ));
   }
 
+  // ── Add block from a category chip (one click, no form) ─────
+  async function addBlockFromCategory(sessionId: string, categoryId: CategoryId) {
+    const session = daySessions.find(s => s.id === sessionId);
+    const nextSort = session ? Math.max(-1, ...session.session_blocks.map(b => b.sort_order)) + 1 : 0;
+    const cat = CATEGORIES[categoryId];
+    const supabase = createClient();
+    const { data: newBlock, error } = await supabase.from('session_blocks')
+      .insert({ session_id: sessionId, name: cat?.label || categoryId, category: categoryId, color: cat?.color || '#2E6BD6', sort_order: nextSort })
+      .select('id, name, category, color, sort_order')
+      .single();
+    if (error || !newBlock) return;
+    setDaySessions(prev => prev.map(s =>
+      s.id === sessionId ? { ...s, session_blocks: [...s.session_blocks, { ...newBlock, session_exercises: [] } as DbBlock] } : s
+    ));
+    setAddExerciseFor(newBlock.id);
+  }
+
   async function reorderBlocks(dragId: string, dropId: string, sessionId: string) {
     const session = daySessions.find(s => s.id === sessionId);
     if (!session) return;
@@ -2961,13 +2889,21 @@ export default function PlannerPage() {
                               )}
 
                               {addExerciseFor === block.id && (
-                                <AddExerciseForm
+                                <ExercisePickerPanel
                                   blockId={block.id}
                                   category={block.category}
                                   athleteId={id}
-                                  bests={bests}
-                                  onSaved={async (newExId) => { setAddExerciseFor(null); await fetchDaySessions(); setExpandedEx(prev => new Set([...prev, newExId])); }}
-                                  onCancel={() => setAddExerciseFor(null)}
+                                  existingNames={new Set(block.session_exercises.map(e => e.name.trim().toLowerCase()))}
+                                  onExerciseAdded={newEx => {
+                                    setDaySessions(prev => prev.map(s => ({
+                                      ...s,
+                                      session_blocks: s.session_blocks.map(b =>
+                                        b.id === block.id ? { ...b, session_exercises: [...b.session_exercises, newEx] } : b
+                                      ),
+                                    })));
+                                    setExpandedEx(prev => new Set([...prev, newEx.id]));
+                                  }}
+                                  onDone={() => setAddExerciseFor(null)}
                                 />
                               )}
                             </div>
@@ -2978,13 +2914,10 @@ export default function PlannerPage() {
                   </div>
 
                   {addBlockFor === session.id ? (
-                    <div style={{ marginTop: 10 }}>
-                      <AddBlockForm
-                        sessionId={session.id}
-                        onSaved={() => { setAddBlockFor(null); fetchDaySessions(); }}
-                        onCancel={() => setAddBlockFor(null)}
-                      />
-                    </div>
+                    <BlockCategoryChips
+                      onPick={async categoryId => { await addBlockFromCategory(session.id, categoryId); }}
+                      onDone={() => setAddBlockFor(null)}
+                    />
                   ) : (
                     <button className="btn btn-ghost btn-sm" style={{ marginTop: 10 }} onClick={() => setAddBlockFor(session.id)}>
                       <PlusIcon size={11}/>Añadir bloque
