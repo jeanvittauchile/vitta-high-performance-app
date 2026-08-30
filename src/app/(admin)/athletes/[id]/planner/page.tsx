@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { CATEGORIES, DAY_TYPES } from '@/lib/constants';
 import { computeExerciseBests, type BestEntry } from '@/lib/exercise-bests';
+import { computeMonthLoadSummary, type MonthLoadSummary } from '@/lib/monthly-load';
 import { getCategoryIcon, PlusIcon, CopyIcon, LayersIcon, ChevronLeft, ChevronRight, ChevronDown, TrashIcon, PencilIcon, CheckIcon, XIcon, TrendIcon, GripIcon, DownloadIcon } from '@/components/icons';
 import LevelBadge from '@/components/badges/LevelBadge';
 import type { Athlete, DayType, CategoryId, LevelId } from '@/lib/types';
@@ -296,8 +297,8 @@ function fmtLastLogDate(d: string) {
   return new Date(d + 'T00:00:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'short' });
 }
 
-function AddExerciseForm({ blockId, category, athleteId, onSaved, onCancel }: {
-  blockId: string; category: CategoryId; athleteId: string;
+function AddExerciseForm({ blockId, category, athleteId, bests, onSaved, onCancel }: {
+  blockId: string; category: CategoryId; athleteId: string; bests: BestEntry[];
   onSaved: (newExId: string) => void; onCancel: () => void;
 }) {
   const [name, setName] = useState('');
@@ -314,6 +315,12 @@ function AddExerciseForm({ blockId, category, athleteId, onSaved, onCancel }: {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [lastLogMap, setLastLogMap] = useState<Map<string, LastLog>>(new Map());
+
+  const matchedBest = useMemo(() => {
+    const n = name.trim().toLowerCase();
+    if (!n) return null;
+    return bests.find(b => b.name.trim().toLowerCase() === n) ?? null;
+  }, [bests, name]);
 
   const inp: React.CSSProperties = { padding: '6px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 12, fontFamily: 'inherit', color: 'var(--text)' };
   const si: React.CSSProperties  = { padding: '5px 7px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 11, fontFamily: 'inherit', color: 'var(--text)', width: '100%' };
@@ -473,6 +480,23 @@ function AddExerciseForm({ blockId, category, athleteId, onSaved, onCancel }: {
           <span className="mono" style={{ fontWeight: 600 }}>
             {lastLog.sets.map((s, i) => `S${i + 1}: ${s.reps != null ? s.reps : '?'}×${s.load != null ? s.load + 'kg' : '?'}${s.rpe != null ? ` (RPE ${s.rpe})` : ''}`).join('  ')}
           </span>
+        </div>
+      )}
+
+      {/* Best mark so far, like Hevy's "previous" hint */}
+      {matchedBest && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: 'rgba(46,107,214,0.08)', border: '1px solid rgba(46,107,214,0.25)', borderRadius: 8 }}>
+          <TrendIcon size={12} stroke="var(--vitta-blue-bright)"/>
+          <div style={{ fontSize: 11, flex: 1, minWidth: 0 }}>
+            <span style={{ fontWeight: 700 }}>Mejor marca:</span>{' '}
+            {matchedBest.reps}×{fmtLoad(matchedBest.load)}kg
+            <span style={{ color: 'var(--text-muted)' }}> · 1RM est. {fmtLoad(matchedBest.rm1)}kg</span>
+          </div>
+          <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 10, flexShrink: 0 }}
+            title="Rellenar la primera serie con esta marca"
+            onClick={() => setDraftSets(prev => prev.map((s, i) => i === 0 ? { ...s, reps: s.reps || String(matchedBest.reps), load: s.load || String(matchedBest.load) } : s))}>
+            Usar
+          </button>
         </div>
       )}
 
@@ -1420,11 +1444,18 @@ export default function PlannerPage() {
   const now = new Date();
   const [currentYear, setCurrentYear] = useState(now.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(now.getMonth() + 1);
+  const prevMonthLabel = useMemo(() => {
+    const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+    const prevMonthNum = currentMonth === 1 ? 12 : currentMonth - 1;
+    return `${MONTH_NAMES[prevMonthNum - 1]} ${prevYear}`;
+  }, [currentYear, currentMonth]);
 
   const [athlete, setAthlete] = useState<Athlete | null>(null);
   const [athleteLoading, setAthleteLoading] = useState(true);
   const [bests, setBests] = useState<BestEntry[]>([]);
   const [bestsLoading, setBestsLoading] = useState(true);
+  const [prevLoadSummary, setPrevLoadSummary] = useState<MonthLoadSummary | null>(null);
+  const [prevLoadLoading, setPrevLoadLoading] = useState(true);
   const [dragOverBlock, setDragOverBlock] = useState<string | null>(null);
   const [dragBlock, setDragBlock] = useState<{ id: string; sessionId: string } | null>(null);
   const [monthPlan, setMonthPlan] = useState<PlanCell[][]>(defaultPlan(weeksInCalendarMonth(now.getFullYear(), now.getMonth() + 1)));
@@ -1487,6 +1518,28 @@ export default function PlannerPage() {
     const supabase = createClient();
     supabase.from('month_plans').select('plan').eq('athlete_id', id).eq('year', currentYear).eq('month', currentMonth).maybeSingle()
       .then(({ data }) => setMonthPlan(normalizePlan(data?.plan, weeksInCalendarMonth(currentYear, currentMonth))));
+  }, [id, currentYear, currentMonth]);
+
+  // ── Fetch previous month's training load (relative to the month being planned) ──
+  useEffect(() => {
+    if (!id) return;
+    setPrevLoadLoading(true);
+    const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+    const prevMonthNum = currentMonth === 1 ? 12 : currentMonth - 1;
+    const start = toISO(new Date(prevYear, prevMonthNum - 1, 1));
+    const end = toISO(new Date(prevYear, prevMonthNum, 0));
+    const supabase = createClient();
+    supabase
+      .from('sessions')
+      .select(`date, duration, rpe_target,
+        session_feedback(duration_seconds, sleep_hours),
+        session_blocks(session_exercises(sets(done, actual_reps, actual_load, actual_rpe)))`)
+      .eq('athlete_id', id)
+      .gte('date', start).lte('date', end)
+      .then(({ data }) => {
+        setPrevLoadSummary(computeMonthLoadSummary((data ?? []) as any));
+        setPrevLoadLoading(false);
+      });
   }, [id, currentYear, currentMonth]);
 
   // ── Fetch session titles + completion status for calendar month ──
@@ -2912,6 +2965,7 @@ export default function PlannerPage() {
                                   blockId={block.id}
                                   category={block.category}
                                   athleteId={id}
+                                  bests={bests}
                                   onSaved={async (newExId) => { setAddExerciseFor(null); await fetchDaySessions(); setExpandedEx(prev => new Set([...prev, newExId])); }}
                                   onCancel={() => setAddExerciseFor(null)}
                                 />
@@ -2945,6 +2999,41 @@ export default function PlannerPage() {
 
       {/* ─── Suggestion panel ───────────────────────────────── */}
       <div className="planner-sidebar" style={{ background: 'var(--surface)', borderLeft: '1px solid var(--border)', padding: '20px 18px', overflow: 'auto' }}>
+        {/* Previous month's training load, for reference while planning */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>Carga · {prevMonthLabel}</div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>Mes anterior al que estás planificando</div>
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={() => window.open(`/athletes/${id}/report`, '_blank')} title="Ver informe mensual completo">
+            <TrendIcon size={12}/>
+          </button>
+        </div>
+        {prevLoadLoading ? (
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '12px 0', textAlign: 'center' }}>Calculando...</div>
+        ) : !prevLoadSummary || (prevLoadSummary.entrenados + prevLoadSummary.parciales + prevLoadSummary.noEntrenados === 0) ? (
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '12px 0', textAlign: 'center' }}>Sin datos registrados ese mes</div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 16 }}>
+            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '8px 10px' }}>
+              <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Carga total</div>
+              <div className="mono tnum" style={{ fontSize: 16, fontWeight: 800, marginTop: 2 }}>{Math.round(prevLoadSummary.loadTotal)} <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)' }}>UA</span></div>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '8px 10px' }}>
+              <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Sesiones</div>
+              <div className="mono tnum" style={{ fontSize: 16, fontWeight: 800, marginTop: 2 }}>{prevLoadSummary.entrenados}<span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)' }}>/{prevLoadSummary.entrenados + prevLoadSummary.parciales + prevLoadSummary.noEntrenados}</span></div>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '8px 10px' }}>
+              <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>RPE prom.</div>
+              <div className="mono tnum" style={{ fontSize: 16, fontWeight: 800, marginTop: 2 }}>{prevLoadSummary.avgRpe != null ? (Math.round(prevLoadSummary.avgRpe * 10) / 10) : '—'}</div>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '8px 10px' }}>
+              <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Sueño prom.</div>
+              <div className="mono tnum" style={{ fontSize: 16, fontWeight: 800, marginTop: 2 }}>{prevLoadSummary.avgSleep != null ? `${Math.round(prevLoadSummary.avgSleep * 10) / 10}h` : '—'}</div>
+            </div>
+          </div>
+        )}
+
         {/* Progress: exercise bests */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <TrendIcon size={16} stroke="var(--vitta-blue-bright)"/>
