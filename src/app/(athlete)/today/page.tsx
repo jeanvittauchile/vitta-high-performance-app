@@ -1,8 +1,9 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
 import { useAthlete } from '@/lib/athlete-context';
 import { CATEGORIES } from '@/lib/constants';
+import { computeExerciseBests, type BestEntry } from '@/lib/exercise-bests';
 import { getCategoryIcon, PlayIcon, InfoIcon, CheckIcon, ChevronDown, XIcon, PauseIcon, TimerIcon } from '@/components/icons';
 import LevelBadge from '@/components/badges/LevelBadge';
 import ExerciseSheet from '@/components/athlete/ExerciseSheet';
@@ -202,9 +203,10 @@ function ActualInput({ label, value, setId, field }: {
 
 // ─── ExerciseRow ─────────────────────────────────────────────
 
-function ExerciseRow({ ex, block, onToggleSet, onOpen, onStartRest }: {
+function ExerciseRow({ ex, block, best, onToggleSet, onOpen, onStartRest }: {
   ex: ExRow;
   block: BlRow;
+  best: BestEntry | undefined;
   onToggleSet: (setId: string, done: boolean) => void;
   onOpen: () => void;
   onStartRest: (secs: number) => void;
@@ -245,6 +247,11 @@ function ExerciseRow({ ex, block, onToggleSet, onOpen, onStartRest }: {
                 <div className="mono tnum" style={{ fontSize: 13, color: 'var(--d-text)' }}>{s.reps || '—'}</div>
                 <div className="mono tnum" style={{ fontSize: 13, color: 'var(--d-text)' }}>
                   {s.load ? (isNaN(Number(s.load)) ? s.load : `${s.load} kg`) : '—'}
+                  {s.load && best && !isNaN(Number(s.load)) && (
+                    <div style={{ fontSize: 10, color: 'var(--d-text-faint)', fontWeight: 600 }}>
+                      ≈{Math.round((Number(s.load) / best.rm1) * 100)}% 1RM
+                    </div>
+                  )}
                 </div>
                 <div className="mono tnum" style={{ fontSize: 12, color: s.rpe_target ? 'var(--amber)' : 'var(--d-text-faint)' }}>
                   {s.rpe_target ?? '—'}
@@ -288,9 +295,10 @@ function ExerciseRow({ ex, block, onToggleSet, onOpen, onStartRest }: {
 
 // ─── BlockCard ───────────────────────────────────────────────
 
-function BlockCard({ block, index, onToggleSet, onOpenExercise, onStartRest }: {
+function BlockCard({ block, index, bestsByName, onToggleSet, onOpenExercise, onStartRest }: {
   block: BlRow;
   index: number;
+  bestsByName: Map<string, BestEntry>;
   onToggleSet: (setId: string, done: boolean) => void;
   onOpenExercise: (ex: ExRow) => void;
   onStartRest: (secs: number) => void;
@@ -326,6 +334,7 @@ function BlockCard({ block, index, onToggleSet, onOpenExercise, onStartRest }: {
               key={ex.id}
               ex={ex}
               block={block}
+              best={bestsByName.get(ex.name.trim().toLowerCase())}
               onToggleSet={onToggleSet}
               onOpen={() => onOpenExercise(ex)}
               onStartRest={onStartRest}
@@ -506,6 +515,12 @@ export default function TodayPage() {
   const { athleteId, loading: authLoading } = useAthlete();
   const [session, setSession] = useState<SessRow | null>(null);
   const [loading, setLoading] = useState(true);
+  const [bests, setBests] = useState<BestEntry[]>([]);
+  const bestsByName = useMemo(() => {
+    const map = new Map<string, BestEntry>();
+    for (const b of bests) map.set(b.name.trim().toLowerCase(), b);
+    return map;
+  }, [bests]);
   const [activeExercise, setActiveExercise] = useState<{ ex: ExRow; catId: CategoryId } | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [dateOffset, setDateOffset] = useState(0);
@@ -599,6 +614,16 @@ export default function TodayPage() {
   useEffect(() => {
     if (!authLoading) { setLoading(true); fetchSession(dateOffset); }
   }, [authLoading, fetchSession, dateOffset]);
+
+  // Athlete's own best-ever set per exercise, to show "% 1RM" next to each prescribed load
+  useEffect(() => {
+    if (!athleteId) return;
+    createClient()
+      .from('sessions')
+      .select('session_blocks(session_exercises(name, sets(done, actual_reps, actual_load)))')
+      .eq('athlete_id', athleteId)
+      .then(({ data }) => setBests(computeExerciseBests(data ?? [])));
+  }, [athleteId]);
 
   // Restore timer from localStorage when session loads
   useEffect(() => {
@@ -834,6 +859,7 @@ export default function TodayPage() {
             key={block.id}
             block={block}
             index={bi}
+            bestsByName={bestsByName}
             onToggleSet={toggleSet}
             onOpenExercise={ex => setActiveExercise({ ex, catId: block.category })}
             onStartRest={secs => setRestTimer({ targetSecs: secs, startedAt: Date.now() })}

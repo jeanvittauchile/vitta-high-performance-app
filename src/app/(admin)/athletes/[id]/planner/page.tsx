@@ -1378,6 +1378,11 @@ export default function PlannerPage() {
   const [athleteLoading, setAthleteLoading] = useState(true);
   const [bests, setBests] = useState<BestEntry[]>([]);
   const [bestsLoading, setBestsLoading] = useState(true);
+  const bestsByName = useMemo(() => {
+    const map = new Map<string, BestEntry>();
+    for (const b of bests) map.set(b.name.trim().toLowerCase(), b);
+    return map;
+  }, [bests]);
   const [prevLoadSummary, setPrevLoadSummary] = useState<MonthLoadSummary | null>(null);
   const [prevLoadLoading, setPrevLoadLoading] = useState(true);
   const [dragOverBlock, setDragOverBlock] = useState<string | null>(null);
@@ -2778,6 +2783,7 @@ export default function PlannerPage() {
                               <div style={{ display: 'grid', gap: 5 }}>
                                 {block.session_exercises.map((item, idx) => {
                                   const isExpanded = expandedEx.has(item.id);
+                                  const best = bestsByName.get(item.name.trim().toLowerCase());
                                   const setsSummary = item.sets.length > 0
                                     ? `${item.sets.length}×${item.sets[0].reps || '—'}` + (item.sets[0].load ? ` · ${item.sets[0].load}kg` : '')
                                     : null;
@@ -2827,17 +2833,29 @@ export default function PlannerPage() {
                                         <div style={{ borderTop: '1px solid var(--border)' }}>
                                           {item.sets.length > 0 && (
                                             <div className="admin-table-scroll">
-                                            <div style={{ minWidth: 320 }}>
-                                              <div style={{ display: 'grid', gridTemplateColumns: '20px 1fr 1fr 46px 1fr 22px 22px', gap: 6, padding: '5px 12px', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700 }}>
-                                                <div>SET</div><div>REPS</div><div>KG</div><div>RPE</div><div>DESCANSO</div><div/><div/>
+                                            <div style={{ minWidth: 366 }}>
+                                              <div style={{ display: 'grid', gridTemplateColumns: '20px 1fr 1fr 46px 46px 1fr 22px 22px', gap: 6, padding: '5px 12px', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700 }}>
+                                                <div>SET</div><div>REPS</div><div>KG</div><div title="Calcula el KG a partir del 1RM estimado del atleta">%1RM</div><div>RPE</div><div>DESCANSO</div><div/><div/>
                                               </div>
                                               {item.sets.map((s, si) => {
                                                 const si_css: React.CSSProperties = { padding: '3px 5px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--surface-2)', fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text)', width: '100%', boxSizing: 'border-box' as const };
                                                 return (
-                                                <div key={s.id} onClick={e => e.stopPropagation()} style={{ display: 'grid', gridTemplateColumns: '20px 1fr 1fr 46px 1fr 22px 22px', gap: 6, padding: '4px 12px', alignItems: 'center', borderTop: '1px solid var(--border)' }}>
+                                                <div key={s.id} onClick={e => e.stopPropagation()} style={{ display: 'grid', gridTemplateColumns: '20px 1fr 1fr 46px 46px 1fr 22px 22px', gap: 6, padding: '4px 12px', alignItems: 'center', borderTop: '1px solid var(--border)' }}>
                                                   <span className="mono" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)' }}>{si + 1}</span>
                                                   <input defaultValue={s.reps ?? ''} placeholder="—" onBlur={e => updateSet(s.id, 'reps', e.target.value, item.id, block.id)} style={si_css}/>
-                                                  <input defaultValue={s.load ?? ''} placeholder="—" type="number" min={0} step={0.5} onBlur={e => updateSet(s.id, 'load', e.target.value, item.id, block.id)} style={si_css}/>
+                                                  <input key={`load-${s.id}-${s.load ?? ''}`} defaultValue={s.load ?? ''} placeholder="—" type="number" min={0} step={0.5} onBlur={e => updateSet(s.id, 'load', e.target.value, item.id, block.id)} style={si_css}/>
+                                                  <input
+                                                    placeholder={best ? '%' : '—'}
+                                                    disabled={!best}
+                                                    title={best ? `Calcula el KG · 1RM est. ${fmtLoad(best.rm1)}kg` : 'Sin 1RM registrado para este ejercicio'}
+                                                    type="number" min={1} max={100} step={1}
+                                                    onBlur={e => {
+                                                      const pct = parseFloat(e.target.value);
+                                                      if (!best || !pct) return;
+                                                      const kg = Math.round((pct / 100) * best.rm1 * 2) / 2;
+                                                      updateSet(s.id, 'load', String(kg), item.id, block.id);
+                                                    }}
+                                                    style={{ ...si_css, opacity: best ? 1 : 0.4 }}/>
                                                   <input defaultValue={s.rpe_target != null ? String(s.rpe_target) : ''} placeholder="—" type="number" min={1} max={10} step={0.5} onBlur={e => updateSet(s.id, 'rpe_target', e.target.value, item.id, block.id)} style={si_css}/>
                                                   <input defaultValue={s.rest ?? ''} placeholder="—" onBlur={e => updateSet(s.id, 'rest', e.target.value, item.id, block.id)} style={si_css}/>
                                                   <button onClick={e => { e.stopPropagation(); duplicateSet(s.id, item.id, block.id); }}
