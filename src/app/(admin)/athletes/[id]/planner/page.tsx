@@ -572,7 +572,7 @@ function CopyPlanToAthleteModal({ currentAthleteId, year, month, plan, onClose }
   onClose: () => void;
 }) {
   const [athletes, setAthletes] = useState<{ id: string; name: string; initials: string; color: string }[]>([]);
-  const [targetId, setTargetId]     = useState<string | null>(null);
+  const [targetIds, setTargetIds] = useState<Set<string>>(new Set());
   const [withSessions, setWithSessions] = useState(false);
   const [copying, setCopying]       = useState(false);
   const [error, setError]           = useState('');
@@ -583,55 +583,52 @@ function CopyPlanToAthleteModal({ currentAthleteId, year, month, plan, onClose }
       .then(({ data }) => setAthletes(data || []));
   }, [currentAthleteId]);
 
+  function toggleTarget(aid: string) {
+    setTargetIds(prev => {
+      const next = new Set(prev);
+      if (next.has(aid)) next.delete(aid); else next.add(aid);
+      return next;
+    });
+  }
+
   async function handleCopy() {
-    if (!targetId) return;
+    if (targetIds.size === 0) return;
     setCopying(true); setError('');
     const supabase = createClient();
 
-    const { error: planErr } = await supabase.from('month_plans').upsert(
-      { athlete_id: targetId, year, month, plan },
-      { onConflict: 'athlete_id,year,month' }
-    );
-    if (planErr) { setError(planErr.message); setCopying(false); return; }
-
+    let sourceSessions: DbSession[] = [];
     if (withSessions) {
       const start = calendarStart(year, month);
       const end   = new Date(start.getFullYear(), start.getMonth(), start.getDate() + weeksInCalendarMonth(year, month) * 7 - 1);
-      const { data: sessions } = await supabase
+      const { data } = await supabase
         .from('sessions')
         .select(`id, title, duration, rpe_target, date, session_blocks ( id, name, category, color, sort_order, session_exercises ( id, exercise_id, name, level, note, sort_order, video_url, sets ( id, reps, load, rpe_target, rest, sort_order ) ) )`)
         .eq('athlete_id', currentAthleteId)
         .gte('date', toISO(start)).lte('date', toISO(end));
+      sourceSessions = (data || []) as unknown as DbSession[];
+    }
 
-      for (const s of (sessions || []) as any[]) {
-        const { data: ns } = await supabase.from('sessions')
-          .insert({ athlete_id: targetId, date: s.date, title: s.title, duration: s.duration, rpe_target: s.rpe_target })
-          .select('id').single();
-        if (!ns) continue;
-        const blocks = [...(s.session_blocks || [])].sort((a: any, b: any) => a.sort_order - b.sort_order);
-        for (const bl of blocks) {
-          const { data: nb } = await supabase.from('session_blocks')
-            .insert({ session_id: ns.id, name: bl.name, category: bl.category, color: bl.color, sort_order: bl.sort_order })
-            .select('id').single();
-          if (!nb) continue;
-          const exs = [...(bl.session_exercises || [])].sort((a: any, b: any) => a.sort_order - b.sort_order);
-          for (const ex of exs) {
-            const { data: ne } = await supabase.from('session_exercises')
-              .insert({ block_id: nb.id, exercise_id: ex.exercise_id, name: ex.name, level: ex.level, note: ex.note, sort_order: ex.sort_order, video_url: ex.video_url })
-              .select('id').single();
-            if (!ne) continue;
-            const sets = [...(ex.sets || [])].sort((a: any, b: any) => a.sort_order - b.sort_order);
-            if (sets.length > 0) {
-              await supabase.from('sets').insert(
-                sets.map((st: any) => ({ session_ex_id: ne.id, reps: st.reps, load: st.load, rpe_target: st.rpe_target, rest: st.rest, sort_order: st.sort_order, done: false }))
-              );
-            }
-          }
-        }
+    let failedPlans = 0;
+    let failedSessions = 0;
+    for (const targetId of targetIds) {
+      const { error: planErr } = await supabase.from('month_plans').upsert(
+        { athlete_id: targetId, year, month, plan },
+        { onConflict: 'athlete_id,year,month' }
+      );
+      if (planErr) { failedPlans++; continue; }
+
+      for (const s of sourceSessions) {
+        const ok = await copySessionToAthlete(supabase, s, targetId, s.date);
+        if (!ok) failedSessions++;
       }
     }
 
-    setCopying(false); setDone(true);
+    setCopying(false);
+    const parts: string[] = [];
+    if (failedPlans > 0) parts.push(`${failedPlans} plan(es) no se pudieron copiar`);
+    if (failedSessions > 0) parts.push(`${failedSessions} sesión(es) no se pudieron copiar`);
+    if (parts.length) setError(parts.join(' · ') + '.');
+    setDone(true);
   }
 
   return (
@@ -639,18 +636,19 @@ function CopyPlanToAthleteModal({ currentAthleteId, year, month, plan, onClose }
       <div className="card admin-modal" style={{ padding: 24 }}>
         {done ? (
           <>
-            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Plan copiado correctamente</div>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Plan copiado</div>
             <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>
-              {MONTH_NAMES[month - 1]} {year} fue pegado en el atleta destino.
+              {MONTH_NAMES[month - 1]} {year} fue pegado en {targetIds.size} atleta(s).
             </div>
+            {error && <div style={{ fontSize: 12, color: '#D7474B', padding: '7px 10px', background: 'rgba(215,71,75,0.08)', borderRadius: 6, marginBottom: 16 }}>{error}</div>}
             <button onClick={onClose} className="btn btn-primary">Cerrar</button>
           </>
         ) : (
           <>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
               <div>
-                <div style={{ fontSize: 15, fontWeight: 700 }}>Copiar plan a otro atleta</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>{MONTH_NAMES[month - 1]} {year} · selecciona el atleta destino</div>
+                <div style={{ fontSize: 15, fontWeight: 700 }}>Copiar plan a atletas</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>{MONTH_NAMES[month - 1]} {year} · elige uno o más atletas destino</div>
               </div>
               <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 20, lineHeight: 1 }}>×</button>
             </div>
@@ -658,16 +656,20 @@ function CopyPlanToAthleteModal({ currentAthleteId, year, month, plan, onClose }
             <div className="thin-scroll" style={{ display: 'grid', gap: 5, maxHeight: 260, overflowY: 'auto', marginBottom: 14 }}>
               {athletes.length === 0 ? (
                 <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '12px 0' }}>No hay otros atletas registrados.</div>
-              ) : athletes.map(a => (
-                <button key={a.id} onClick={() => setTargetId(a.id)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 12px', borderRadius: 8, border: `2px solid ${targetId === a.id ? '#2E6BD6' : 'var(--border)'}`, background: targetId === a.id ? 'rgba(46,107,214,0.08)' : 'var(--surface-2)', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', width: '100%' }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 16, background: a.color || '#2E6BD6', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
-                    {a.initials}
-                  </div>
-                  <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{a.name}</span>
-                  {targetId === a.id && <CheckIcon size={14} stroke="#2E6BD6" strokeWidth={2.5}/>}
-                </button>
-              ))}
+              ) : athletes.map(a => {
+                const checked = targetIds.has(a.id);
+                return (
+                  <button key={a.id} onClick={() => toggleTarget(a.id)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 12px', borderRadius: 8, border: `2px solid ${checked ? '#2E6BD6' : 'var(--border)'}`, background: checked ? 'rgba(46,107,214,0.08)' : 'var(--surface-2)', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', width: '100%' }}>
+                    <input type="checkbox" checked={checked} readOnly style={{ width: 14, height: 14, pointerEvents: 'none' }}/>
+                    <div style={{ width: 32, height: 32, borderRadius: 16, background: a.color || '#2E6BD6', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                      {a.initials}
+                    </div>
+                    <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{a.name}</span>
+                    {checked && <CheckIcon size={14} stroke="#2E6BD6" strokeWidth={2.5}/>}
+                  </button>
+                );
+              })}
             </div>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', marginBottom: 16, padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)' }}>
@@ -682,8 +684,8 @@ function CopyPlanToAthleteModal({ currentAthleteId, year, month, plan, onClose }
 
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button onClick={onClose} className="btn btn-ghost">Cancelar</button>
-              <button onClick={handleCopy} disabled={!targetId || copying} className="btn btn-primary">
-                <CopyIcon size={13}/>{copying ? 'Copiando...' : 'Pegar en atleta destino'}
+              <button onClick={handleCopy} disabled={targetIds.size === 0 || copying} className="btn btn-primary">
+                <CopyIcon size={13}/>{copying ? 'Copiando...' : `Copiar a ${targetIds.size || ''} atleta(s)`}
               </button>
             </div>
           </>
@@ -2396,8 +2398,8 @@ export default function PlannerPage() {
                 {dupMsg.text}
               </span>
             )}
-            <button className="btn btn-ghost" onClick={() => setShowCopyPlanModal(true)} title="Copiar plan a otro atleta">
-              <CopyIcon size={13}/>Copiar a atleta
+            <button className="btn btn-ghost" onClick={() => setShowCopyPlanModal(true)} title="Copiar plan mensual a uno o más atletas">
+              <CopyIcon size={13}/>Copiar a atletas
             </button>
             <button
               className={selectSessionsMode ? 'btn btn-primary' : 'btn btn-ghost'}
