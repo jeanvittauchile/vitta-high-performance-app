@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { CATEGORIES, DAY_TYPES } from '@/lib/constants';
@@ -312,6 +312,63 @@ function fmtLastLogDate(d: string) {
 
 const DEFAULT_SET_COUNT = 3;
 const DEFAULT_REST = '2:00';
+const REST_PRESETS = ['0:10', '0:30', '1:00', '1:30', '2:00', '2:30', '3:00'];
+
+// ─── Rest time picker: preset buttons instead of free text ────
+
+function RestPicker({ value, onChange, style }: { value: string | null; onChange: (v: string) => void; style?: React.CSSProperties }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative', ...style }} onClick={e => e.stopPropagation()}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          padding: '3px 5px', borderRadius: 4, border: '1px solid var(--border)',
+          background: 'var(--surface-2)', fontSize: 11, fontFamily: 'var(--font-mono)',
+          color: value ? 'var(--text)' : 'var(--text-muted)', width: '100%', boxSizing: 'border-box',
+          cursor: 'pointer', textAlign: 'left',
+        }}
+      >
+        {value || '—'}
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, marginTop: 3, zIndex: 20,
+          background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, padding: 4,
+          display: 'flex', flexWrap: 'wrap', gap: 3, width: 132, boxShadow: '0 4px 14px rgba(0,0,0,0.14)',
+        }}>
+          {REST_PRESETS.map(p => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => { onChange(p); setOpen(false); }}
+              style={{
+                padding: '3px 6px', borderRadius: 4, border: '1px solid var(--border)',
+                background: p === value ? '#2E6BD6' : 'var(--surface-2)',
+                color: p === value ? 'white' : 'var(--text)',
+                fontSize: 10, fontFamily: 'var(--font-mono)', cursor: 'pointer', lineHeight: 1.6,
+              }}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ExercisePickerPanel({ blockId, category, athleteId, bests, existingNames, onExerciseAdded, onDone }: {
   blockId: string; category: CategoryId; athleteId: string; bests: BestEntry[];
@@ -514,7 +571,7 @@ function AddSetForm({ exerciseId, onSaved, onClose }: {
         <input placeholder="Reps" value={reps} onChange={e => setReps(e.target.value)} style={inp}/>
         <input placeholder="Kg" type="number" min={0} step={0.5} value={load} onChange={e => setLoad(e.target.value)} style={inp}/>
         <input placeholder="RPE" type="number" min={1} max={10} step={0.5} value={rpe} onChange={e => setRpe(e.target.value)} style={inp}/>
-        <input placeholder="Descanso" value={rest} onChange={e => setRest(e.target.value)} style={inp}/>
+        <RestPicker value={rest || null} onChange={setRest}/>
         <button onClick={save} disabled={saving} className="btn btn-primary btn-sm" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
           {saving ? '...' : 'Añadir'}
         </button>
@@ -2857,7 +2914,7 @@ export default function PlannerPage() {
                                                     }}
                                                     style={{ ...si_css, opacity: best ? 1 : 0.4 }}/>
                                                   <input defaultValue={s.rpe_target != null ? String(s.rpe_target) : ''} placeholder="—" type="number" min={1} max={10} step={0.5} onBlur={e => updateSet(s.id, 'rpe_target', e.target.value, item.id, block.id)} style={si_css}/>
-                                                  <input defaultValue={s.rest ?? ''} placeholder="—" onBlur={e => updateSet(s.id, 'rest', e.target.value, item.id, block.id)} style={si_css}/>
+                                                  <RestPicker value={s.rest} onChange={v => updateSet(s.id, 'rest', v, item.id, block.id)}/>
                                                   <button onClick={e => { e.stopPropagation(); duplicateSet(s.id, item.id, block.id); }}
                                                     title="Duplicar serie"
                                                     style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '1px 0', opacity: 0.6, display: 'grid', placeItems: 'center' }}>
