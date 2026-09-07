@@ -2,7 +2,7 @@ export type CategoryId =
   | 'traccion' | 'empuje' | 'zona_media' | 'arranque' | 'envion' | 'jerk'
   | 'pliometria_brazos' | 'pliometria_piernas' | 'lanzamientos'
   | 'aerobicos' | 'preventivos' | 'movilidad' | 'coordinacion'
-  | 'deportivo' | 'desafio' | 'circuito';
+  | 'deportivo' | 'desafio';
 
 export type LevelId = 'basico' | 'intermedio' | 'avanzado';
 

@@ -16,14 +16,7 @@ export const CATEGORIES: Record<string, Category> = {
   coordinacion:       { id: 'coordinacion',       label: 'Coordinación Compleja',   short: 'COR', color: '#6E59E0', iconKey: 'coord'     },
   deportivo:          { id: 'deportivo',          label: 'Deportivo',               short: 'DEP', color: '#F59E0B', iconKey: 'deportivo'  },
   desafio:            { id: 'desafio',            label: 'Desafío',                 short: 'DES', color: '#EC4899', iconKey: 'desafio'   },
-  circuito:           { id: 'circuito',           label: 'Circuito',                short: 'CIR', color: '#0EA5A5', iconKey: 'circuit'   },
 };
-
-// 'circuito' groups exercises from other categories inside one block — it isn't
-// a movement pattern itself, so individual library exercises can't be tagged with it.
-export const EXERCISE_CATEGORIES: Record<string, Category> = Object.fromEntries(
-  Object.entries(CATEGORIES).filter(([id]) => id !== 'circuito')
-);
 
 export const LEVELS: Record<string, Level> = {
   basico:     { id: 'basico',     label: 'Básico',     short: 'B', color: '#2BB673', index: 1 },
