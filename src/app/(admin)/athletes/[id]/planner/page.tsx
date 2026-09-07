@@ -316,9 +316,10 @@ const DEFAULT_SET_COUNT = 3;
 const DEFAULT_REST = '2:00';
 const REST_PRESETS = ['0:10', '0:30', '1:00', '1:30', '2:00', '2:30', '3:00'];
 const SET_SCHEMES: { category: string; variants: string[] }[] = [
-  { category: 'Fuerza Máxima', variants: ['10-8-6-3-3-3-3-3', '12-10-8-5-5-5-5'] },
+  { category: 'Fuerza Máxima', variants: ['10-8-6-3-3-3-3-3', '12-10-8-5-5-5-5-5'] },
   { category: 'Hipertrofia', variants: ['15-12-12-10-8', '15-12-12-10-10', '15-12-10-12-15'] },
   { category: 'Explosivos', variants: ['6-6-6-6-6-6', '5-5-5-5-5', '4-4-4-4', '3-3-3'] },
+  { category: 'Core', variants: ['10-10-10-10', '15-15-15-15', '20-20-20-20', '25-25-25-25'] },
 ];
 
 // ─── Set/rep scheme picker: preset buttons for common set schemes ─
