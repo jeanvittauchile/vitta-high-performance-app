@@ -313,6 +313,66 @@ function fmtLastLogDate(d: string) {
 const DEFAULT_SET_COUNT = 3;
 const DEFAULT_REST = '2:00';
 const REST_PRESETS = ['0:10', '0:30', '1:00', '1:30', '2:00', '2:30', '3:00'];
+const SET_SCHEMES: { category: string; variants: string[] }[] = [
+  { category: 'Fuerza Máxima', variants: ['10-8-6-3-3-3-3-3', '12-10-8-5-5-5-5'] },
+  { category: 'Hipertrofia', variants: ['15-12-12-10-8', '15-12-12-10-10', '15-12-10-12-15'] },
+  { category: 'Explosivos', variants: ['6-6-6-6-6-6', '5-5-5-5-5', '4-4-4-4', '3-3-3'] },
+];
+
+// ─── Set/rep scheme picker: preset buttons for common set schemes ─
+
+function SchemePicker({ onApply }: { onApply: (reps: string[]) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-block' }} onClick={e => e.stopPropagation()}>
+      <button type="button" onClick={() => setOpen(o => !o)} className="btn btn-ghost btn-sm" style={{ fontSize: 10 }}>
+        <PlusIcon size={10}/>Esquema de series
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, marginTop: 3, zIndex: 20,
+          background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, padding: 8,
+          display: 'grid', gap: 8, width: 210, boxShadow: '0 4px 14px rgba(0,0,0,0.14)',
+        }}>
+          {SET_SCHEMES.map(group => (
+            <div key={group.category}>
+              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 4 }}>
+                {group.category}
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {group.variants.map(v => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => { onApply(v.split('-')); setOpen(false); }}
+                    style={{
+                      padding: '3px 6px', borderRadius: 4, border: '1px solid var(--border)',
+                      background: 'var(--surface-2)', color: 'var(--text)',
+                      fontSize: 10, fontFamily: 'var(--font-mono)', cursor: 'pointer', lineHeight: 1.6,
+                    }}
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── Rest time picker: preset buttons instead of free text ────
 
@@ -2046,6 +2106,31 @@ export default function PlannerPage() {
     })));
   }
 
+  // ── Apply a set/rep scheme preset (replaces all sets for the exercise) ──
+  async function applySetScheme(exerciseId: string, blockId: string, reps: string[]) {
+    const session = daySessions.find(s => s.session_blocks.some(b => b.id === blockId));
+    const block = session?.session_blocks.find(b => b.id === blockId);
+    const ex = block?.session_exercises.find(e => e.id === exerciseId);
+    if (!ex) return;
+    if (ex.sets.length > 0 && !confirm('Esto reemplazará las series actuales de este ejercicio por el esquema elegido. ¿Continuar?')) return;
+    const supabase = createClient();
+    await supabase.from('sets').delete().eq('session_ex_id', exerciseId);
+    const { data: newSets } = await supabase.from('sets').insert(
+      reps.map((r, i) => ({ session_ex_id: exerciseId, reps: r, load: null, rpe_target: null, rest: DEFAULT_REST, done: false, sort_order: i }))
+    ).select('id, reps, load, rpe_target, rest, sort_order');
+    setDaySessions(prev => prev.map(s => ({
+      ...s,
+      session_blocks: s.session_blocks.map(b =>
+        b.id === blockId ? {
+          ...b,
+          session_exercises: b.session_exercises.map(e =>
+            e.id === exerciseId ? { ...e, sets: (newSets || []) as DbSet[] } : e
+          ),
+        } : b
+      ),
+    })));
+  }
+
   // ── Move session to another date (calendar drag-drop) ─────
   async function handleMoveSession(fromDate: string, toDate: string) {
     if (fromDate === toDate) return;
@@ -2959,10 +3044,11 @@ export default function PlannerPage() {
                                               onClose={() => setAddSetFor(null)}
                                             />
                                           ) : (
-                                            <div style={{ padding: '5px 12px 7px' }}>
+                                            <div style={{ padding: '5px 12px 7px', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                                               <button onClick={e => { e.stopPropagation(); setAddSetFor(item.id); }} className="btn btn-ghost btn-sm" style={{ fontSize: 10 }}>
                                                 <PlusIcon size={10}/>Añadir serie
                                               </button>
+                                              <SchemePicker onApply={reps => applySetScheme(item.id, block.id, reps)}/>
                                             </div>
                                           )}
                                         </div>
