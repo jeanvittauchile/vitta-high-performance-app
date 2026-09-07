@@ -28,6 +28,7 @@ interface DbExercise {
   note: string | null;
   sort_order: number;
   video_url: string | null;
+  circuit_group: string | null;
   sets: DbSet[];
 }
 
@@ -297,6 +298,57 @@ function BlockCategoryChips({ onPick, onDone }: { onPick: (categoryId: CategoryI
   );
 }
 
+// ─── Circuit grouping: pick 2+ exercises to chain as one circuit ──
+
+function CircuitGroupPicker({ exercises, onCreate, onCancel }: {
+  exercises: DbExercise[];
+  onCreate: (ids: string[]) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+
+  function toggle(id: string) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  return (
+    <div style={{ marginTop: 8, padding: 10, background: 'rgba(14,165,165,0.06)', borderRadius: 10, border: '1px solid rgba(14,165,165,0.3)' }}>
+      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 8 }}>
+        Elige 2 o más ejercicios para encadenar como circuito (sin descanso entre ellos, rondas repetidas)
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {exercises.map(ex => {
+          const on = selected.has(ex.id);
+          return (
+            <button key={ex.id} type="button" onClick={() => toggle(ex.id)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8,
+                border: `1px solid ${on ? '#0EA5A5' : 'var(--border)'}`, background: on ? 'rgba(14,165,165,0.14)' : 'var(--surface)',
+                color: on ? '#0EA5A5' : 'var(--text)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 11, fontWeight: 600,
+              }}>
+              {on && <CheckIcon size={10} stroke="#0EA5A5"/>}
+              {ex.name}
+            </button>
+          );
+        })}
+        {exercises.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No hay ejercicios sueltos en este bloque.</div>}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 10 }}>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel} disabled={saving}>Cancelar</button>
+        <button type="button" className="btn btn-primary btn-sm" disabled={selected.size < 2 || saving}
+          onClick={async () => { setSaving(true); await onCreate(Array.from(selected)); setSaving(false); }}>
+          {saving ? '...' : `Agrupar (${selected.size})`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Add Exercise: clickable card picker ─────────────────────
 // Click a card to add that exercise instantly (pre-filled with the athlete's
 // last logged sets when available), so several exercises can be added in a
@@ -497,7 +549,7 @@ function ExercisePickerPanel({ blockId, category, athleteId, bests, existingName
     const { data: exData, error: exErr } = await supabase
       .from('session_exercises')
       .insert({ block_id: blockId, exercise_id: exerciseId, name: name.trim(), level, note: null, sort_order: nextSort, video_url: videoUrl })
-      .select('id, exercise_id, name, level, note, sort_order, video_url')
+      .select('id, exercise_id, name, level, note, sort_order, video_url, circuit_group')
       .single();
     if (exErr || !exData) { setError(exErr?.message || 'Error al añadir el ejercicio.'); setAddingKey(null); return; }
 
@@ -720,7 +772,7 @@ function CopyPlanToAthleteModal({ currentAthleteId, year, month, plan, onClose }
       const end   = new Date(start.getFullYear(), start.getMonth(), start.getDate() + weeksInCalendarMonth(year, month) * 7 - 1);
       const { data } = await supabase
         .from('sessions')
-        .select(`id, title, duration, rpe_target, date, session_blocks ( id, name, category, color, sort_order, session_exercises ( id, exercise_id, name, level, note, sort_order, video_url, sets ( id, reps, load, rpe_target, rest, sort_order ) ) )`)
+        .select(`id, title, duration, rpe_target, date, session_blocks ( id, name, category, color, sort_order, session_exercises ( id, exercise_id, name, level, note, sort_order, video_url, circuit_group, sets ( id, reps, load, rpe_target, rest, sort_order ) ) )`)
         .eq('athlete_id', currentAthleteId)
         .gte('date', toISO(start)).lte('date', toISO(end));
       sourceSessions = (data || []) as unknown as DbSession[];
@@ -1273,7 +1325,7 @@ function CopySessionModal({ session, athleteId, onClose, onCopied }: {
       for (const ex of block.session_exercises) {
         const { data: newEx, error: e3 } = await supabase
           .from('session_exercises')
-          .insert({ block_id: newBlock.id, exercise_id: ex.exercise_id, name: ex.name, level: ex.level, note: ex.note, sort_order: ex.sort_order, video_url: ex.video_url })
+          .insert({ block_id: newBlock.id, exercise_id: ex.exercise_id, name: ex.name, level: ex.level, note: ex.note, sort_order: ex.sort_order, video_url: ex.video_url, circuit_group: ex.circuit_group })
           .select('id')
           .single();
         if (e3 || !newEx) continue;
@@ -1352,7 +1404,7 @@ async function copySessionToAthlete(
     for (const ex of exs) {
       const { data: newEx, error: e3 } = await supabase
         .from('session_exercises')
-        .insert({ block_id: newBlock.id, exercise_id: ex.exercise_id, name: ex.name, level: ex.level, note: ex.note, sort_order: ex.sort_order, video_url: ex.video_url })
+        .insert({ block_id: newBlock.id, exercise_id: ex.exercise_id, name: ex.name, level: ex.level, note: ex.note, sort_order: ex.sort_order, video_url: ex.video_url, circuit_group: ex.circuit_group })
         .select('id')
         .single();
       if (e3 || !newEx) continue;
@@ -1515,6 +1567,7 @@ export default function PlannerPage() {
   const [addBlockFor, setAddBlockFor] = useState<string | null>(null);
   const [editBlockId, setEditBlockId] = useState<string | null>(null);
   const [addExerciseFor, setAddExerciseFor] = useState<string | null>(null);
+  const [circuitPickFor, setCircuitPickFor] = useState<string | null>(null);
   const [expandedEx, setExpandedEx] = useState<Set<string>>(new Set());
   const [addSetFor, setAddSetFor] = useState<string | null>(null);
   const [doneBlocks, setDoneBlocks] = useState<Set<string>>(new Set());
@@ -1623,7 +1676,7 @@ export default function PlannerPage() {
         session_blocks (
           id, name, category, color, sort_order,
           session_exercises (
-            id, exercise_id, name, level, note, sort_order, video_url,
+            id, exercise_id, name, level, note, sort_order, video_url, circuit_group,
             sets ( id, reps, load, rpe_target, rest, sort_order )
           )
         )
@@ -1985,11 +2038,130 @@ export default function PlannerPage() {
     const supabase = createClient();
     await supabase.from('sets').delete().eq('session_ex_id', exerciseId);
     await supabase.from('session_exercises').delete().eq('id', exerciseId);
+
+    // If this was part of a circuit and only one exercise is left in it, dissolve the group.
+    const session = daySessions.find(s => s.session_blocks.some(b => b.id === blockId));
+    const block = session?.session_blocks.find(b => b.id === blockId);
+    const removed = block?.session_exercises.find(e => e.id === exerciseId);
+    let orphanId: string | null = null;
+    if (removed?.circuit_group) {
+      const remaining = block!.session_exercises.filter(e => e.id !== exerciseId && e.circuit_group === removed.circuit_group);
+      if (remaining.length === 1) {
+        orphanId = remaining[0].id;
+        await supabase.from('session_exercises').update({ circuit_group: null }).eq('id', orphanId);
+      }
+    }
+
     setDaySessions(prev => prev.map(s => ({
       ...s,
       session_blocks: s.session_blocks.map(b =>
-        b.id === blockId ? { ...b, session_exercises: b.session_exercises.filter(e => e.id !== exerciseId) } : b
+        b.id === blockId ? {
+          ...b,
+          session_exercises: b.session_exercises
+            .filter(e => e.id !== exerciseId)
+            .map(e => e.id === orphanId ? { ...e, circuit_group: null } : e),
+        } : b
       ),
+    })));
+  }
+
+  // ── Circuit grouping: chain 2+ exercises with rounds instead of independent sets ──
+  function generateCircuitGroupId() {
+    return `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+  }
+
+  async function groupIntoCircuit(blockId: string, exerciseIds: string[]) {
+    const session = daySessions.find(s => s.session_blocks.some(b => b.id === blockId));
+    const block = session?.session_blocks.find(b => b.id === blockId);
+    if (!block) return;
+    const members = block.session_exercises.filter(e => exerciseIds.includes(e.id));
+    if (members.length < 2) return;
+
+    const groupId = generateCircuitGroupId();
+    const targetRounds = Math.max(1, ...members.map(m => m.sets.length));
+    const supabase = createClient();
+
+    const newSetsMap = new Map<string, DbSet[]>();
+    for (const m of members) {
+      if (m.sets.length < targetRounds) {
+        const toAdd = targetRounds - m.sets.length;
+        const inserts = Array.from({ length: toAdd }, (_, i) => ({
+          session_ex_id: m.id, reps: null, load: null, rpe_target: null, rest: DEFAULT_REST, done: false,
+          sort_order: m.sets.length + i,
+        }));
+        const { data: added } = await supabase.from('sets').insert(inserts).select('id, reps, load, rpe_target, rest, sort_order');
+        newSetsMap.set(m.id, [...m.sets, ...((added || []) as DbSet[])]);
+      } else {
+        newSetsMap.set(m.id, m.sets);
+      }
+    }
+
+    await supabase.from('session_exercises').update({ circuit_group: groupId }).in('id', exerciseIds);
+
+    setDaySessions(prev => prev.map(s => ({
+      ...s,
+      session_blocks: s.session_blocks.map(b => b.id !== blockId ? b : {
+        ...b,
+        session_exercises: b.session_exercises.map(e =>
+          exerciseIds.includes(e.id) ? { ...e, circuit_group: groupId, sets: newSetsMap.get(e.id) || e.sets } : e
+        ),
+      }),
+    })));
+  }
+
+  async function ungroupCircuit(blockId: string, exerciseIds: string[]) {
+    const supabase = createClient();
+    await supabase.from('session_exercises').update({ circuit_group: null }).in('id', exerciseIds);
+    setDaySessions(prev => prev.map(s => ({
+      ...s,
+      session_blocks: s.session_blocks.map(b => b.id !== blockId ? b : {
+        ...b,
+        session_exercises: b.session_exercises.map(e => exerciseIds.includes(e.id) ? { ...e, circuit_group: null } : e),
+      }),
+    })));
+  }
+
+  async function addRoundToGroup(blockId: string, groupId: string) {
+    const session = daySessions.find(s => s.session_blocks.some(b => b.id === blockId));
+    const block = session?.session_blocks.find(b => b.id === blockId);
+    if (!block) return;
+    const members = block.session_exercises.filter(e => e.circuit_group === groupId);
+    const supabase = createClient();
+    const results = new Map<string, DbSet>();
+    for (const m of members) {
+      const { data: newSet } = await supabase.from('sets')
+        .insert({ session_ex_id: m.id, reps: null, load: null, rpe_target: null, rest: DEFAULT_REST, done: false, sort_order: m.sets.length })
+        .select('id, reps, load, rpe_target, rest, sort_order').single();
+      if (newSet) results.set(m.id, newSet as DbSet);
+    }
+    setDaySessions(prev => prev.map(s => ({
+      ...s,
+      session_blocks: s.session_blocks.map(b => b.id !== blockId ? b : {
+        ...b,
+        session_exercises: b.session_exercises.map(e =>
+          results.has(e.id) ? { ...e, sets: [...e.sets, results.get(e.id)!] } : e
+        ),
+      }),
+    })));
+  }
+
+  async function removeRoundFromGroup(blockId: string, groupId: string) {
+    const session = daySessions.find(s => s.session_blocks.some(b => b.id === blockId));
+    const block = session?.session_blocks.find(b => b.id === blockId);
+    if (!block) return;
+    const members = block.session_exercises.filter(e => e.circuit_group === groupId);
+    if (members.length === 0 || members.some(m => m.sets.length <= 1)) return;
+    const idsToDelete = members.map(m => m.sets[m.sets.length - 1]?.id).filter(Boolean) as string[];
+    const supabase = createClient();
+    await supabase.from('sets').delete().in('id', idsToDelete);
+    setDaySessions(prev => prev.map(s => ({
+      ...s,
+      session_blocks: s.session_blocks.map(b => b.id !== blockId ? b : {
+        ...b,
+        session_exercises: b.session_exercises.map(e =>
+          e.circuit_group === groupId ? { ...e, sets: e.sets.slice(0, -1) } : e
+        ),
+      }),
     })));
   }
 
@@ -2187,7 +2359,7 @@ export default function PlannerPage() {
           session_blocks (
             id, name, category, color, sort_order,
             session_exercises (
-              id, exercise_id, name, level, note, sort_order, video_url,
+              id, exercise_id, name, level, note, sort_order, video_url, circuit_group,
               sets ( id, reps, load, rpe_target, rest, sort_order, done )
             )
           )
@@ -2247,7 +2419,7 @@ export default function PlannerPage() {
           for (const ex of exercises) {
             const { data: newEx, error: neErr } = await supabase
               .from('session_exercises')
-              .insert({ block_id: newBlock.id, exercise_id: ex.exercise_id, name: ex.name, level: ex.level, note: ex.note, sort_order: ex.sort_order, video_url: ex.video_url })
+              .insert({ block_id: newBlock.id, exercise_id: ex.exercise_id, name: ex.name, level: ex.level, note: ex.note, sort_order: ex.sort_order, video_url: ex.video_url, circuit_group: ex.circuit_group })
               .select('id').single();
             if (neErr || !newEx) continue;
 
@@ -2911,6 +3083,9 @@ export default function PlannerPage() {
                                   <button className="btn btn-ghost btn-sm" onClick={() => setAddExerciseFor(addExerciseFor === block.id ? null : block.id)}>
                                     <PlusIcon size={11}/>Añadir ejercicio
                                   </button>
+                                  <button className="btn btn-ghost btn-sm" onClick={() => setCircuitPickFor(circuitPickFor === block.id ? null : block.id)} title="Encadenar 2+ ejercicios como circuito">
+                                    <LayersIcon size={11}/>Agrupar circuito
+                                  </button>
                                   <button onClick={() => toggleBlockDone(block.id)}
                                     style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 9px', borderRadius: 6, border: '1px solid rgba(43,182,115,0.45)', background: 'transparent', color: '#2BB673', cursor: 'pointer', fontSize: 11, fontWeight: 700, fontFamily: 'inherit' }}>
                                     <CheckIcon size={11} stroke="#2BB673" strokeWidth={2.5}/>OK
@@ -2924,143 +3099,202 @@ export default function PlannerPage() {
                           {!isCollapsed && (
                             <div style={{ borderTop: '1px solid var(--border)', padding: '10px 12px 12px' }}>
                               <div style={{ display: 'grid', gap: 5 }}>
-                                {block.session_exercises.map((item, idx) => {
-                                  const isExpanded = expandedEx.has(item.id);
-                                  const best = bestsByName.get(item.name.trim().toLowerCase());
-                                  const setsSummary = item.sets.length > 0
-                                    ? `${item.sets.length}×${item.sets[0].reps || '—'}` + (item.sets[0].load ? ` · ${item.sets[0].load}kg` : '')
-                                    : null;
-                                  return (
-                                    <div key={item.id} style={{ background: 'white', borderRadius: 6, border: '1px solid var(--border)', overflow: 'hidden' }}>
-                                      <div
-                                        style={{ display: 'grid', gridTemplateColumns: '20px 1fr auto auto auto', gap: 8, alignItems: 'center', padding: '8px 10px', fontSize: 12, cursor: 'pointer' }}
-                                        onClick={() => toggleEx(item.id)}
-                                      >
-                                        <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                                          {String.fromCharCode(65 + bi)}{idx + 1}
-                                        </span>
-                                        <div>
-                                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                                            <span style={{ fontWeight: 600 }}>{item.name}</span>
-                                            {item.level && <LevelBadge level={item.level} size="sm"/>}
-                                            {setsSummary && (
-                                              <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', background: 'var(--surface-2)', padding: '1px 5px', borderRadius: 4 }}>
-                                                {setsSummary}
-                                              </span>
+                                {(() => {
+                                  const sortedExs = block.session_exercises;
+                                  const groups: { key: string; items: DbExercise[] }[] = [];
+                                  const seenGroups = new Map<string, number>();
+                                  for (const ex of sortedExs) {
+                                    if (ex.circuit_group) {
+                                      if (seenGroups.has(ex.circuit_group)) {
+                                        groups[seenGroups.get(ex.circuit_group)!].items.push(ex);
+                                      } else {
+                                        seenGroups.set(ex.circuit_group, groups.length);
+                                        groups.push({ key: ex.circuit_group, items: [ex] });
+                                      }
+                                    } else {
+                                      groups.push({ key: ex.id, items: [ex] });
+                                    }
+                                  }
+
+                                  function renderExerciseCard(item: DbExercise, idx: number, inCircuit: boolean) {
+                                    const isExpanded = expandedEx.has(item.id);
+                                    const best = bestsByName.get(item.name.trim().toLowerCase());
+                                    const setsSummary = item.sets.length > 0
+                                      ? `${item.sets.length}×${item.sets[0].reps || '—'}` + (item.sets[0].load ? ` · ${item.sets[0].load}kg` : '')
+                                      : null;
+                                    const gridCols = inCircuit ? '20px 1fr 1fr 46px 46px 1fr' : '20px 1fr 1fr 46px 46px 1fr 22px 22px';
+                                    return (
+                                      <div key={item.id} style={{ background: 'white', borderRadius: 6, border: '1px solid var(--border)', overflow: 'hidden' }}>
+                                        <div
+                                          style={{ display: 'grid', gridTemplateColumns: '20px 1fr auto auto auto', gap: 8, alignItems: 'center', padding: '8px 10px', fontSize: 12, cursor: 'pointer' }}
+                                          onClick={() => toggleEx(item.id)}
+                                        >
+                                          <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                                            {String.fromCharCode(65 + bi)}{idx + 1}
+                                          </span>
+                                          <div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                              <span style={{ fontWeight: 600 }}>{item.name}</span>
+                                              {item.level && <LevelBadge level={item.level} size="sm"/>}
+                                              {setsSummary && (
+                                                <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', background: 'var(--surface-2)', padding: '1px 5px', borderRadius: 4 }}>
+                                                  {setsSummary}
+                                                </span>
+                                              )}
+                                            </div>
+                                            {item.note && <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>{item.note}</div>}
+                                          </div>
+                                          <div onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                            <button onClick={e => { e.stopPropagation(); moveExercise(item.id, block.id, 'up'); }}
+                                              disabled={idx === 0}
+                                              title="Subir ejercicio"
+                                              style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: idx === 0 ? 'default' : 'pointer', padding: '1px 3px', opacity: idx === 0 ? 0.25 : 0.65, lineHeight: 1 }}>
+                                              <ChevronDown size={11} style={{ transform: 'rotate(180deg)', display: 'block' }}/>
+                                            </button>
+                                            <button onClick={e => { e.stopPropagation(); moveExercise(item.id, block.id, 'down'); }}
+                                              disabled={idx === block.session_exercises.length - 1}
+                                              title="Bajar ejercicio"
+                                              style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: idx === block.session_exercises.length - 1 ? 'default' : 'pointer', padding: '1px 3px', opacity: idx === block.session_exercises.length - 1 ? 0.25 : 0.65, lineHeight: 1 }}>
+                                              <ChevronDown size={11} style={{ display: 'block' }}/>
+                                            </button>
+                                          </div>
+                                          <button onClick={e => { e.stopPropagation(); deleteExercise(item.id, block.id); }}
+                                            style={{ background: 'transparent', border: 'none', color: '#D7474B', cursor: 'pointer', padding: '2px 4px', opacity: 0.7 }}>
+                                            <TrashIcon size={13}/>
+                                          </button>
+                                          <ChevronDown size={14} style={{ color: 'var(--text-muted)', transition: 'transform 0.15s', transform: isExpanded ? 'rotate(180deg)' : 'none', flexShrink: 0 }}/>
+                                        </div>
+
+                                        {isExpanded && (
+                                          <div style={{ borderTop: '1px solid var(--border)' }}>
+                                            {item.sets.length > 0 && (
+                                              <div className="admin-table-scroll">
+                                              <div style={{ minWidth: inCircuit ? 300 : 366 }}>
+                                                <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 6, padding: '5px 12px', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700 }}>
+                                                  <div>{inCircuit ? 'RONDA' : 'SET'}</div><div>REPS</div><div>KG</div><div title="Calcula el KG a partir del 1RM estimado del atleta">%1RM</div><div>RPE</div><div>DESCANSO</div>{!inCircuit && (<><div/><div/></>)}
+                                                </div>
+                                                {item.sets.map((s, si) => {
+                                                  const si_css: React.CSSProperties = { padding: '3px 5px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--surface-2)', fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text)', width: '100%', boxSizing: 'border-box' as const };
+                                                  return (
+                                                  <div key={s.id} onClick={e => e.stopPropagation()} style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 6, padding: '4px 12px', alignItems: 'center', borderTop: '1px solid var(--border)' }}>
+                                                    <span className="mono" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)' }}>{si + 1}</span>
+                                                    <input defaultValue={s.reps ?? ''} placeholder="—" onBlur={e => updateSet(s.id, 'reps', e.target.value, item.id, block.id)} style={si_css}/>
+                                                    <input key={`load-${s.id}-${s.load ?? ''}`} defaultValue={s.load ?? ''} placeholder="—" type="number" min={0} step={0.5} onBlur={e => updateSet(s.id, 'load', e.target.value, item.id, block.id)} style={si_css}/>
+                                                    <input
+                                                      placeholder={best ? '%' : '—'}
+                                                      disabled={!best}
+                                                      title={best ? `Calcula el KG · 1RM est. ${fmtLoad(best.rm1)}kg` : 'Sin 1RM registrado para este ejercicio'}
+                                                      type="number" min={1} max={100} step={1}
+                                                      onBlur={e => {
+                                                        const pct = parseFloat(e.target.value);
+                                                        if (!best || !pct) return;
+                                                        const kg = Math.round((pct / 100) * best.rm1 * 2) / 2;
+                                                        updateSet(s.id, 'load', String(kg), item.id, block.id);
+                                                      }}
+                                                      style={{ ...si_css, opacity: best ? 1 : 0.4 }}/>
+                                                    <input defaultValue={s.rpe_target != null ? String(s.rpe_target) : ''} placeholder="—" type="number" min={1} max={10} step={0.5} onBlur={e => updateSet(s.id, 'rpe_target', e.target.value, item.id, block.id)} style={si_css}/>
+                                                    <RestPicker value={s.rest} onChange={v => updateSet(s.id, 'rest', v, item.id, block.id)}/>
+                                                    {!inCircuit && (
+                                                      <>
+                                                        <button onClick={e => { e.stopPropagation(); duplicateSet(s.id, item.id, block.id); }}
+                                                          title="Duplicar serie"
+                                                          style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '1px 0', opacity: 0.6, display: 'grid', placeItems: 'center' }}>
+                                                          <CopyIcon size={11}/>
+                                                        </button>
+                                                        <button onClick={e => { e.stopPropagation(); deleteSet(s.id, item.id, block.id); }}
+                                                          style={{ background: 'transparent', border: 'none', color: '#D7474B', cursor: 'pointer', padding: '1px 0', opacity: 0.6, display: 'grid', placeItems: 'center' }}>
+                                                          <XIcon size={11}/>
+                                                        </button>
+                                                      </>
+                                                    )}
+                                                  </div>
+                                                  );
+                                                })}
+                                              </div>
+                                              </div>
+                                            )}
+                                            <div onClick={e => e.stopPropagation()} style={{ padding: '6px 12px', borderTop: '1px solid var(--border)' }}>
+                                              <textarea
+                                                key={item.id + (item.note ?? '')}
+                                                defaultValue={item.note ?? ''}
+                                                placeholder="Añadir nota o descripción..."
+                                                onBlur={e => updateExerciseNote(item.id, block.id, e.target.value)}
+                                                rows={2}
+                                                style={{ width: '100%', boxSizing: 'border-box' as const, fontSize: 11, padding: '4px 6px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.4 }}
+                                              />
+                                            </div>
+                                            {!inCircuit && (
+                                              addSetFor === item.id ? (
+                                                <AddSetForm
+                                                  exerciseId={item.id}
+                                                  onSaved={newSet => {
+                                                    setDaySessions(prev => prev.map(s => ({
+                                                      ...s,
+                                                      session_blocks: s.session_blocks.map(b =>
+                                                        b.id === block.id ? {
+                                                          ...b,
+                                                          session_exercises: b.session_exercises.map(e =>
+                                                            e.id === item.id ? { ...e, sets: [...e.sets, newSet] } : e
+                                                          ),
+                                                        } : b
+                                                      ),
+                                                    })));
+                                                  }}
+                                                  onClose={() => setAddSetFor(null)}
+                                                />
+                                              ) : (
+                                                <div style={{ padding: '5px 12px 7px', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                                  <button onClick={e => { e.stopPropagation(); setAddSetFor(item.id); }} className="btn btn-ghost btn-sm" style={{ fontSize: 10 }}>
+                                                    <PlusIcon size={10}/>Añadir serie
+                                                  </button>
+                                                  <SchemePicker onApply={reps => applySetScheme(item.id, block.id, reps)}/>
+                                                </div>
+                                              )
                                             )}
                                           </div>
-                                          {item.note && <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>{item.note}</div>}
-                                        </div>
-                                        <div onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                                          <button onClick={e => { e.stopPropagation(); moveExercise(item.id, block.id, 'up'); }}
-                                            disabled={idx === 0}
-                                            title="Subir ejercicio"
-                                            style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: idx === 0 ? 'default' : 'pointer', padding: '1px 3px', opacity: idx === 0 ? 0.25 : 0.65, lineHeight: 1 }}>
-                                            <ChevronDown size={11} style={{ transform: 'rotate(180deg)', display: 'block' }}/>
-                                          </button>
-                                          <button onClick={e => { e.stopPropagation(); moveExercise(item.id, block.id, 'down'); }}
-                                            disabled={idx === block.session_exercises.length - 1}
-                                            title="Bajar ejercicio"
-                                            style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: idx === block.session_exercises.length - 1 ? 'default' : 'pointer', padding: '1px 3px', opacity: idx === block.session_exercises.length - 1 ? 0.25 : 0.65, lineHeight: 1 }}>
-                                            <ChevronDown size={11} style={{ display: 'block' }}/>
-                                          </button>
-                                        </div>
-                                        <button onClick={e => { e.stopPropagation(); deleteExercise(item.id, block.id); }}
-                                          style={{ background: 'transparent', border: 'none', color: '#D7474B', cursor: 'pointer', padding: '2px 4px', opacity: 0.7 }}>
-                                          <TrashIcon size={13}/>
-                                        </button>
-                                        <ChevronDown size={14} style={{ color: 'var(--text-muted)', transition: 'transform 0.15s', transform: isExpanded ? 'rotate(180deg)' : 'none', flexShrink: 0 }}/>
+                                        )}
                                       </div>
+                                    );
+                                  }
 
-                                      {isExpanded && (
-                                        <div style={{ borderTop: '1px solid var(--border)' }}>
-                                          {item.sets.length > 0 && (
-                                            <div className="admin-table-scroll">
-                                            <div style={{ minWidth: 366 }}>
-                                              <div style={{ display: 'grid', gridTemplateColumns: '20px 1fr 1fr 46px 46px 1fr 22px 22px', gap: 6, padding: '5px 12px', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700 }}>
-                                                <div>SET</div><div>REPS</div><div>KG</div><div title="Calcula el KG a partir del 1RM estimado del atleta">%1RM</div><div>RPE</div><div>DESCANSO</div><div/><div/>
-                                              </div>
-                                              {item.sets.map((s, si) => {
-                                                const si_css: React.CSSProperties = { padding: '3px 5px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--surface-2)', fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text)', width: '100%', boxSizing: 'border-box' as const };
-                                                return (
-                                                <div key={s.id} onClick={e => e.stopPropagation()} style={{ display: 'grid', gridTemplateColumns: '20px 1fr 1fr 46px 46px 1fr 22px 22px', gap: 6, padding: '4px 12px', alignItems: 'center', borderTop: '1px solid var(--border)' }}>
-                                                  <span className="mono" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)' }}>{si + 1}</span>
-                                                  <input defaultValue={s.reps ?? ''} placeholder="—" onBlur={e => updateSet(s.id, 'reps', e.target.value, item.id, block.id)} style={si_css}/>
-                                                  <input key={`load-${s.id}-${s.load ?? ''}`} defaultValue={s.load ?? ''} placeholder="—" type="number" min={0} step={0.5} onBlur={e => updateSet(s.id, 'load', e.target.value, item.id, block.id)} style={si_css}/>
-                                                  <input
-                                                    placeholder={best ? '%' : '—'}
-                                                    disabled={!best}
-                                                    title={best ? `Calcula el KG · 1RM est. ${fmtLoad(best.rm1)}kg` : 'Sin 1RM registrado para este ejercicio'}
-                                                    type="number" min={1} max={100} step={1}
-                                                    onBlur={e => {
-                                                      const pct = parseFloat(e.target.value);
-                                                      if (!best || !pct) return;
-                                                      const kg = Math.round((pct / 100) * best.rm1 * 2) / 2;
-                                                      updateSet(s.id, 'load', String(kg), item.id, block.id);
-                                                    }}
-                                                    style={{ ...si_css, opacity: best ? 1 : 0.4 }}/>
-                                                  <input defaultValue={s.rpe_target != null ? String(s.rpe_target) : ''} placeholder="—" type="number" min={1} max={10} step={0.5} onBlur={e => updateSet(s.id, 'rpe_target', e.target.value, item.id, block.id)} style={si_css}/>
-                                                  <RestPicker value={s.rest} onChange={v => updateSet(s.id, 'rest', v, item.id, block.id)}/>
-                                                  <button onClick={e => { e.stopPropagation(); duplicateSet(s.id, item.id, block.id); }}
-                                                    title="Duplicar serie"
-                                                    style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '1px 0', opacity: 0.6, display: 'grid', placeItems: 'center' }}>
-                                                    <CopyIcon size={11}/>
-                                                  </button>
-                                                  <button onClick={e => { e.stopPropagation(); deleteSet(s.id, item.id, block.id); }}
-                                                    style={{ background: 'transparent', border: 'none', color: '#D7474B', cursor: 'pointer', padding: '1px 0', opacity: 0.6, display: 'grid', placeItems: 'center' }}>
-                                                    <XIcon size={11}/>
-                                                  </button>
-                                                </div>
-                                                );
-                                              })}
-                                            </div>
-                                            </div>
-                                          )}
-                                          <div onClick={e => e.stopPropagation()} style={{ padding: '6px 12px', borderTop: '1px solid var(--border)' }}>
-                                            <textarea
-                                              key={item.id + (item.note ?? '')}
-                                              defaultValue={item.note ?? ''}
-                                              placeholder="Añadir nota o descripción..."
-                                              onBlur={e => updateExerciseNote(item.id, block.id, e.target.value)}
-                                              rows={2}
-                                              style={{ width: '100%', boxSizing: 'border-box' as const, fontSize: 11, padding: '4px 6px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.4 }}
-                                            />
+                                  return groups.map(g => {
+                                    if (g.items.length < 2) {
+                                      const item = g.items[0];
+                                      return renderExerciseCard(item, sortedExs.indexOf(item), false);
+                                    }
+                                    const groupId = g.key;
+                                    const rounds = Math.max(0, ...g.items.map(e => e.sets.length));
+                                    return (
+                                      <div key={groupId} style={{ border: '1.5px solid #0EA5A5', borderRadius: 8, padding: 8, background: 'rgba(14,165,165,0.04)', display: 'grid', gap: 6 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                                          <span style={{ fontSize: 10, fontWeight: 700, color: '#0EA5A5', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                                            Circuito · {rounds} {rounds === 1 ? 'ronda' : 'rondas'}
+                                          </span>
+                                          <div style={{ display: 'flex', gap: 4 }}>
+                                            <button type="button" onClick={() => addRoundToGroup(block.id, groupId)} className="btn btn-ghost btn-sm" style={{ fontSize: 10 }}>+ Ronda</button>
+                                            <button type="button" onClick={() => removeRoundFromGroup(block.id, groupId)} disabled={rounds <= 1} className="btn btn-ghost btn-sm" style={{ fontSize: 10 }}>− Ronda</button>
+                                            <button type="button" onClick={() => ungroupCircuit(block.id, g.items.map(e => e.id))} className="btn btn-ghost btn-sm" style={{ fontSize: 10 }}>Desagrupar</button>
                                           </div>
-                                          {addSetFor === item.id ? (
-                                            <AddSetForm
-                                              exerciseId={item.id}
-                                              onSaved={newSet => {
-                                                setDaySessions(prev => prev.map(s => ({
-                                                  ...s,
-                                                  session_blocks: s.session_blocks.map(b =>
-                                                    b.id === block.id ? {
-                                                      ...b,
-                                                      session_exercises: b.session_exercises.map(e =>
-                                                        e.id === item.id ? { ...e, sets: [...e.sets, newSet] } : e
-                                                      ),
-                                                    } : b
-                                                  ),
-                                                })));
-                                              }}
-                                              onClose={() => setAddSetFor(null)}
-                                            />
-                                          ) : (
-                                            <div style={{ padding: '5px 12px 7px', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                                              <button onClick={e => { e.stopPropagation(); setAddSetFor(item.id); }} className="btn btn-ghost btn-sm" style={{ fontSize: 10 }}>
-                                                <PlusIcon size={10}/>Añadir serie
-                                              </button>
-                                              <SchemePicker onApply={reps => applySetScheme(item.id, block.id, reps)}/>
-                                            </div>
-                                          )}
                                         </div>
-                                      )}
-                                    </div>
-                                  );
-                                })}
+                                        <div style={{ display: 'grid', gap: 5 }}>
+                                          {g.items.map(item => renderExerciseCard(item, sortedExs.indexOf(item), true))}
+                                        </div>
+                                      </div>
+                                    );
+                                  });
+                                })()}
                               </div>
 
                               {block.session_exercises.length === 0 && (
                                 <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '6px 0' }}>Sin ejercicios. Añade uno arriba.</div>
+                              )}
+
+                              {circuitPickFor === block.id && (
+                                <CircuitGroupPicker
+                                  exercises={block.session_exercises.filter(e => !e.circuit_group)}
+                                  onCreate={async ids => { await groupIntoCircuit(block.id, ids); setCircuitPickFor(null); }}
+                                  onCancel={() => setCircuitPickFor(null)}
+                                />
                               )}
 
                               {addExerciseFor === block.id && (

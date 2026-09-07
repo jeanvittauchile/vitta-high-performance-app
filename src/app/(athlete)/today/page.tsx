@@ -36,6 +36,7 @@ interface ExRow {
   equipment: string | null;
   video_url: string | null;
   gif_url: string | null;
+  circuit_group: string | null;
   sets: SetRow[];
 }
 
@@ -293,13 +294,98 @@ function ExerciseRow({ ex, block, best, onToggleSet, onOpen, onStartRest }: {
   );
 }
 
+// ─── CircuitCard ─────────────────────────────────────────────
+// 2+ exercises chained back-to-back with no rest between them; rounds
+// repeat, and a single check marks that round done across every exercise.
+
+function CircuitCard({ items, onToggleRound, onStartRest }: {
+  items: ExRow[];
+  onToggleRound: (setIds: string[], makeDone: boolean) => void;
+  onStartRest: (secs: number) => void;
+}) {
+  const rounds = items.length ? Math.max(...items.map(e => e.sets.length)) : 0;
+  const doneRounds = Array.from({ length: rounds }, (_, i) => items.every(e => !e.sets[i] || e.sets[i].done)).filter(Boolean).length;
+  const allDone = rounds > 0 && doneRounds === rounds;
+  const cols = `28px repeat(${items.length}, 1fr) 26px`;
+
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--d-border)', borderRadius: 12, overflow: 'hidden', opacity: allDone ? 0.6 : 1 }}>
+      <div style={{ padding: '12px 12px 6px' }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: '#0EA5A5', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
+          Circuito · {doneRounds}/{rounds} rondas
+        </div>
+        <div style={{ display: 'grid', gap: 3 }}>
+          {items.map((ex, i) => (
+            <div key={ex.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span className="mono" style={{ fontSize: 10, fontWeight: 700, color: '#0EA5A5' }}>{i + 1}</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--d-text)', flex: 1 }}>{ex.name}</span>
+              {ex.level && <LevelBadge level={ex.level as LevelId}/>}
+              {(ex.video_url || ex.gif_url) && (
+                <button
+                  onClick={() => window.open((ex.video_url || ex.gif_url)!, '_blank', 'noopener,noreferrer')}
+                  style={{ padding: '3px 7px', borderRadius: 6, background: 'var(--vitta-blue)', color: '#fff', border: 'none', fontSize: 9, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}
+                >
+                  <PlayIcon size={8}/> Ver
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ padding: '4px 10px 10px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 6, padding: '4px 2px', fontSize: 9, color: 'var(--d-text-faint)', letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700 }}>
+          <div/>
+          {items.map(ex => (
+            <div key={ex.id} className="mono" style={{ textAlign: 'center' }}>{ex.name.length > 10 ? ex.name.slice(0, 9) + '…' : ex.name}</div>
+          ))}
+          <div/>
+        </div>
+        {rounds === 0 && <div style={{ fontSize: 12, color: 'var(--d-text-faint)', padding: '8px 2px' }}>Sin rondas configuradas.</div>}
+        {Array.from({ length: rounds }, (_, ri) => {
+          const setsAtRound = items.map(e => e.sets[ri]).filter(Boolean) as SetRow[];
+          const roundDone = setsAtRound.length > 0 && setsAtRound.every(s => s.done);
+          const restVal = setsAtRound.map(s => s.rest).find(r => r && r !== '—');
+          return (
+            <div key={ri}>
+              <div
+                onClick={() => onToggleRound(setsAtRound.map(s => s.id), !roundDone)}
+                style={{ display: 'grid', gridTemplateColumns: cols, gap: 6, padding: '7px 2px', alignItems: 'center', cursor: 'pointer', background: roundDone ? 'rgba(43,182,115,0.10)' : 'transparent', borderRadius: 8 }}
+              >
+                <div className="mono" style={{ fontSize: 12, fontWeight: 700, color: roundDone ? 'var(--green)' : 'var(--d-text)' }}>{ri + 1}</div>
+                {items.map(ex => (
+                  <div key={ex.id} className="mono tnum" style={{ fontSize: 12, color: 'var(--d-text)', textAlign: 'center' }}>{ex.sets[ri]?.reps || '—'}</div>
+                ))}
+                <div style={{ width: 22, height: 22, borderRadius: 11, border: `1.5px solid ${roundDone ? 'var(--green)' : 'var(--d-border-strong)'}`, background: roundDone ? 'var(--green)' : 'transparent', display: 'grid', placeItems: 'center' }}>
+                  {roundDone && <CheckIcon size={12} stroke="white" strokeWidth={3}/>}
+                </div>
+              </div>
+              {roundDone && restVal && parseRest(restVal) > 0 && (
+                <div onClick={e => e.stopPropagation()} style={{ padding: '0 2px 6px' }}>
+                  <button
+                    onClick={() => { unlockAudio(); onStartRest(parseRest(restVal)); }}
+                    style={{ width: '100%', padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(43,182,115,0.35)', background: 'rgba(43,182,115,0.10)', color: 'var(--green)', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                  >
+                    <TimerIcon size={12} stroke="currentColor"/> Iniciar descanso · {restVal}
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── BlockCard ───────────────────────────────────────────────
 
-function BlockCard({ block, index, bestsByName, onToggleSet, onOpenExercise, onStartRest }: {
+function BlockCard({ block, index, bestsByName, onToggleSet, onToggleRound, onOpenExercise, onStartRest }: {
   block: BlRow;
   index: number;
   bestsByName: Map<string, BestEntry>;
   onToggleSet: (setId: string, done: boolean) => void;
+  onToggleRound: (setIds: string[], makeDone: boolean) => void;
   onOpenExercise: (ex: ExRow) => void;
   onStartRest: (secs: number) => void;
 }) {
@@ -329,17 +415,31 @@ function BlockCard({ block, index, bestsByName, onToggleSet, onOpenExercise, onS
 
       {expanded && (
         <div style={{ padding: '0 14px 14px', display: 'grid', gap: 8 }}>
-          {block.session_exercises.map(ex => (
-            <ExerciseRow
-              key={ex.id}
-              ex={ex}
-              block={block}
-              best={bestsByName.get(ex.name.trim().toLowerCase())}
-              onToggleSet={onToggleSet}
-              onOpen={() => onOpenExercise(ex)}
-              onStartRest={onStartRest}
-            />
-          ))}
+          {(() => {
+            const groups: { key: string; items: ExRow[] }[] = [];
+            const seenGroups = new Map<string, number>();
+            for (const ex of block.session_exercises) {
+              if (ex.circuit_group) {
+                if (seenGroups.has(ex.circuit_group)) groups[seenGroups.get(ex.circuit_group)!].items.push(ex);
+                else { seenGroups.set(ex.circuit_group, groups.length); groups.push({ key: ex.circuit_group, items: [ex] }); }
+              } else {
+                groups.push({ key: ex.id, items: [ex] });
+              }
+            }
+            return groups.map(g => g.items.length > 1 ? (
+              <CircuitCard key={g.key} items={g.items} onToggleRound={onToggleRound} onStartRest={onStartRest}/>
+            ) : (
+              <ExerciseRow
+                key={g.items[0].id}
+                ex={g.items[0]}
+                block={block}
+                best={bestsByName.get(g.items[0].name.trim().toLowerCase())}
+                onToggleSet={onToggleSet}
+                onOpen={() => onOpenExercise(g.items[0])}
+                onStartRest={onStartRest}
+              />
+            ));
+          })()}
           {block.session_exercises.length === 0 && (
             <div style={{ fontSize: 12, color: 'var(--d-text-faint)', padding: '8px 0' }}>Sin ejercicios en este bloque.</div>
           )}
@@ -570,7 +670,7 @@ export default function TodayPage() {
         session_blocks (
           id, name, category, color, sort_order,
           session_exercises (
-            id, name, level, note, sort_order, video_url, gif_url,
+            id, name, level, note, sort_order, video_url, gif_url, circuit_group,
             exercises ( slug, muscle, equipment, video_url, gif_url ),
             sets ( id, reps, load, rpe_target, rest, done, sort_order, actual_reps, actual_load, actual_rpe )
           )
@@ -747,6 +847,25 @@ export default function TodayPage() {
     await supabase.from('sets').update({ done: !done }).eq('id', setId);
   }
 
+  async function toggleRound(setIds: string[], makeDone: boolean) {
+    if (setIds.length === 0) return;
+    setSession(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        session_blocks: prev.session_blocks.map(b => ({
+          ...b,
+          session_exercises: b.session_exercises.map(e => ({
+            ...e,
+            sets: e.sets.map(s => setIds.includes(s.id) ? { ...s, done: makeDone } : s),
+          })),
+        })),
+      };
+    });
+    const supabase = createClient();
+    await supabase.from('sets').update({ done: makeDone }).in('id', setIds);
+  }
+
   if (authLoading || loading) {
     return (
       <div style={{ padding: '40px 16px', textAlign: 'center', color: 'var(--d-text-muted)', fontSize: 14 }}>
@@ -861,6 +980,7 @@ export default function TodayPage() {
             index={bi}
             bestsByName={bestsByName}
             onToggleSet={toggleSet}
+            onToggleRound={toggleRound}
             onOpenExercise={ex => setActiveExercise({ ex, catId: block.category })}
             onStartRest={secs => setRestTimer({ targetSecs: secs, startedAt: Date.now() })}
           />
