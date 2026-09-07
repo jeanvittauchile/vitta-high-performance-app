@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase';
-import { CATEGORIES, LEVELS } from '@/lib/constants';
+import { CATEGORIES, EXERCISE_CATEGORIES, LEVELS } from '@/lib/constants';
 import { getCategoryIcon, PlusIcon, SearchIcon, CopyIcon, XIcon, VideoIcon, ExternalLinkIcon, PencilIcon, CheckIcon, TrashIcon } from '@/components/icons';
 import LevelBadge from '@/components/badges/LevelBadge';
 import type { CategoryId, LevelId } from '@/lib/types';
@@ -178,7 +178,7 @@ function EditExerciseModal({ exercise, onClose, onSaved }: {
             <div>
               <label style={lbl}>Categoría</label>
               <select value={category} onChange={e => setCategory(e.target.value as CategoryId)} style={inp}>
-                {Object.values(CATEGORIES).map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                {Object.values(EXERCISE_CATEGORIES).map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
               </select>
             </div>
             <div>
@@ -294,7 +294,7 @@ function NewExerciseModal({ onClose, onCreated }: { onClose: () => void; onCreat
             <div>
               <label style={lbl}>Categoría</label>
               <select value={category} onChange={e => setCategory(e.target.value as CategoryId)} style={inp}>
-                {Object.values(CATEGORIES).map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                {Object.values(EXERCISE_CATEGORIES).map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
               </select>
             </div>
             <div>
@@ -558,7 +558,7 @@ export default function LibraryPage() {
 
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
           <FilterChip active={activeCat === 'all'} onClick={() => setActiveCat('all')} label="Todas las categorías"/>
-          {Object.values(CATEGORIES).map(c => {
+          {Object.values(EXERCISE_CATEGORIES).map(c => {
             const Ic = getCategoryIcon(c.id);
             return (
               <FilterChip key={c.id} active={activeCat === c.id} onClick={() => setActiveCat(c.id as CategoryId)} color={c.color}

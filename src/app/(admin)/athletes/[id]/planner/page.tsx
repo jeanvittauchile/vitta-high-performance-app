@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { CATEGORIES, DAY_TYPES } from '@/lib/constants';
@@ -37,6 +38,7 @@ interface LibEx {
   level: LevelId;
   video_url: string | null;
   gif_url: string | null;
+  category?: CategoryId;
 }
 
 interface DbBlock {
@@ -323,28 +325,56 @@ const SET_SCHEMES: { category: string; variants: string[] }[] = [
 
 function SchemePicker({ onApply }: { onApply: (reps: string[]) => void }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState<{ top?: number; bottom?: number; left: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     function onDocClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (btnRef.current?.contains(e.target as Node)) return;
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false);
     }
+    function onScrollOrResize() { setOpen(false); }
     document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      window.removeEventListener('scroll', onScrollOrResize, true);
+      window.removeEventListener('resize', onScrollOrResize);
+    };
   }, [open]);
 
+  function toggle() {
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      const estMenuHeight = 260;
+      const openUp = rect.bottom + estMenuHeight > window.innerHeight && rect.top > estMenuHeight;
+      setCoords({
+        top: openUp ? undefined : rect.bottom + 4,
+        bottom: openUp ? window.innerHeight - rect.top + 4 : undefined,
+        left: rect.left,
+      });
+    }
+    setOpen(o => !o);
+  }
+
   return (
-    <div ref={ref} style={{ position: 'relative', display: 'inline-block' }} onClick={e => e.stopPropagation()}>
-      <button type="button" onClick={() => setOpen(o => !o)} className="btn btn-ghost btn-sm" style={{ fontSize: 10 }}>
+    <>
+      <button ref={btnRef} type="button" onClick={e => { e.stopPropagation(); toggle(); }} className="btn btn-ghost btn-sm" style={{ fontSize: 10 }}>
         <PlusIcon size={10}/>Esquema de series
       </button>
-      {open && (
-        <div style={{
-          position: 'absolute', top: '100%', left: 0, marginTop: 3, zIndex: 20,
-          background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, padding: 8,
-          display: 'grid', gap: 8, width: 210, boxShadow: '0 4px 14px rgba(0,0,0,0.14)',
-        }}>
+      {open && coords && createPortal(
+        <div
+          ref={menuRef}
+          onClick={e => e.stopPropagation()}
+          style={{
+            position: 'fixed', top: coords.top, bottom: coords.bottom, left: coords.left, zIndex: 1000,
+            background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, padding: 8,
+            display: 'grid', gap: 8, width: 210, boxShadow: '0 4px 14px rgba(0,0,0,0.14)',
+          }}
+        >
           {SET_SCHEMES.map(group => (
             <div key={group.category}>
               <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 4 }}>
@@ -368,9 +398,10 @@ function SchemePicker({ onApply }: { onApply: (reps: string[]) => void }) {
               </div>
             </div>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   );
 }
 
@@ -444,8 +475,10 @@ function ExercisePickerPanel({ blockId, category, athleteId, bests, existingName
   const [error, setError] = useState('');
 
   useEffect(() => {
-    createClient().from('exercises').select('id, name, level, video_url, gif_url').eq('category', category).order('name')
-      .then(({ data }) => setLibExercises((data as LibEx[]) || []));
+    // A "circuito" block mixes exercises from any category, so it skips the category filter.
+    let q = createClient().from('exercises').select('id, name, level, video_url, gif_url, category').order('name');
+    if (category !== 'circuito') q = q.eq('category', category);
+    q.then(({ data }) => setLibExercises((data as LibEx[]) || []));
   }, [category]);
 
   useEffect(() => {
@@ -544,6 +577,11 @@ function ExercisePickerPanel({ blockId, category, athleteId, bests, existingName
               <span style={{ fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
                 {already && <CheckIcon size={10} stroke="#2BB673"/>}
                 {busy ? '...' : ex.name}
+                {!busy && category === 'circuito' && ex.category && CATEGORIES[ex.category] && (
+                  <span className="mono" style={{ fontSize: 8, fontWeight: 700, color: CATEGORIES[ex.category].color, background: `${CATEGORIES[ex.category].color}14`, padding: '1px 4px', borderRadius: 3 }}>
+                    {CATEGORIES[ex.category].short}
+                  </span>
+                )}
               </span>
               {!busy && last && (
                 <span className="mono" style={{ fontSize: 9, color: 'var(--text-muted)' }}>
@@ -2977,7 +3015,7 @@ export default function PlannerPage() {
                                             <div className="admin-table-scroll">
                                             <div style={{ minWidth: 366 }}>
                                               <div style={{ display: 'grid', gridTemplateColumns: '20px 1fr 1fr 46px 46px 1fr 22px 22px', gap: 6, padding: '5px 12px', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700 }}>
-                                                <div>SET</div><div>REPS</div><div>KG</div><div title="Calcula el KG a partir del 1RM estimado del atleta">%1RM</div><div>RPE</div><div>DESCANSO</div><div/><div/>
+                                                <div>{block.category === 'circuito' ? 'RONDA' : 'SET'}</div><div>REPS</div><div>KG</div><div title="Calcula el KG a partir del 1RM estimado del atleta">%1RM</div><div>RPE</div><div>DESCANSO</div><div/><div/>
                                               </div>
                                               {item.sets.map((s, si) => {
                                                 const si_css: React.CSSProperties = { padding: '3px 5px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--surface-2)', fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text)', width: '100%', boxSizing: 'border-box' as const };

@@ -288,6 +288,14 @@ export const GripIcon = (p: IconProps) => (
 
 export const DeportivoIcon = (p: IconProps) => <Icon {...p} d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>;
 export const DesafioIcon   = (p: IconProps) => <Icon {...p} d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>;
+export const CircuitIcon   = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M17 2l4 4-4 4"/>
+    <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+    <path d="M7 22l-4-4 4-4"/>
+    <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+  </Icon>
+);
 
 export const SunIcon  = (p: IconProps) => (
   <Icon {...p}>
@@ -315,6 +323,7 @@ export function getCategoryIcon(catId: string) {
     coordinacion:       CoordIcon,
     deportivo:          DeportivoIcon,
     desafio:            DesafioIcon,
+    circuito:           CircuitIcon,
   };
   return map[catId] || CoreIcon;
 }

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
-import { CATEGORIES } from '@/lib/constants';
+import { CATEGORIES, EXERCISE_CATEGORIES } from '@/lib/constants';
 import { getCategoryIcon, PlusIcon, SearchIcon, ChevronRight, ChevronDown } from '@/components/icons';
 import StatusPill from '@/components/badges/StatusPill';
 import NewAthleteModal from '@/components/admin/NewAthleteModal';
@@ -73,7 +73,7 @@ export default function AthletesPage() {
           </div>
           <FilterSelect value={filterCat} onChange={setFilterCat} options={[
             { value: 'all', label: 'Todas las categorías' },
-            ...Object.values(CATEGORIES).map(c => ({ value: c.id, label: c.label })),
+            ...Object.values(EXERCISE_CATEGORIES).map(c => ({ value: c.id, label: c.label })),
           ]}/>
           <FilterSelect value={filterStatus} onChange={setFilterStatus} options={[
             { value: 'all',      label: 'Todos los estados' },
