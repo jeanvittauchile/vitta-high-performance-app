@@ -6,7 +6,7 @@ export type CategoryId =
 
 export type LevelId = 'basico' | 'intermedio' | 'avanzado';
 
-export type AthleteStatus = 'on-track' | 'peak' | 'deload' | 'missed';
+export type AthleteStatus = 'on-track' | 'paused' | 'canceled';
 
 export interface Category {
   id: CategoryId;

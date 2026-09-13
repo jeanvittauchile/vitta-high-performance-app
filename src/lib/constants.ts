@@ -78,13 +78,13 @@ export const EXERCISES: Exercise[] = [
 
 export const ATHLETES: Athlete[] = [
   { id: 'a1', name: 'Camila Rojas',   focus: 'aerobicos',           age: 28, weeklyHours: 7,  adherence: 92, initials: 'CR', rpe7: 7.2, status: 'on-track', color: '#E8A33A' },
-  { id: 'a2', name: 'Mateo Herrera',  focus: 'envion',              age: 32, weeklyHours: 5,  adherence: 88, initials: 'MH', rpe7: 8.1, status: 'peak',     color: '#1B2A57' },
+  { id: 'a2', name: 'Mateo Herrera',  focus: 'envion',              age: 32, weeklyHours: 5,  adherence: 88, initials: 'MH', rpe7: 8.1, status: 'on-track', color: '#1B2A57' },
   { id: 'a3', name: 'Lucía Mendoza',  focus: 'aerobicos',           age: 35, weeklyHours: 12, adherence: 96, initials: 'LM', rpe7: 6.8, status: 'on-track', color: '#6E59E0' },
-  { id: 'a4', name: 'Diego Salinas',  focus: 'preventivos',         age: 41, weeklyHours: 9,  adherence: 78, initials: 'DS', rpe7: 5.9, status: 'deload',   color: '#2BB673' },
+  { id: 'a4', name: 'Diego Salinas',  focus: 'preventivos',         age: 41, weeklyHours: 9,  adherence: 78, initials: 'DS', rpe7: 5.9, status: 'paused',   color: '#2BB673' },
   { id: 'a5', name: 'Ana Vargas',     focus: 'movilidad',           age: 24, weeklyHours: 10, adherence: 84, initials: 'AV', rpe7: 7.5, status: 'on-track', color: '#4A8AF0' },
-  { id: 'a6', name: 'Tomás Ríos',     focus: 'pliometria_piernas',  age: 19, weeklyHours: 6,  adherence: 70, initials: 'TR', rpe7: 6.2, status: 'missed',   color: '#2BB673' },
+  { id: 'a6', name: 'Tomás Ríos',     focus: 'pliometria_piernas',  age: 19, weeklyHours: 6,  adherence: 70, initials: 'TR', rpe7: 6.2, status: 'canceled', color: '#2BB673' },
   { id: 'a7', name: 'Valentina Paz',  focus: 'coordinacion',        age: 22, weeklyHours: 8,  adherence: 95, initials: 'VP', rpe7: 7.0, status: 'on-track', color: '#E8A33A' },
-  { id: 'a8', name: 'Nicolás Vidal',  focus: 'arranque',            age: 29, weeklyHours: 7,  adherence: 90, initials: 'NV', rpe7: 7.8, status: 'peak',     color: '#6E59E0' },
+  { id: 'a8', name: 'Nicolás Vidal',  focus: 'arranque',            age: 29, weeklyHours: 7,  adherence: 90, initials: 'NV', rpe7: 7.8, status: 'on-track', color: '#6E59E0' },
 ];
 
 export const TODAY_SESSION: Session = {

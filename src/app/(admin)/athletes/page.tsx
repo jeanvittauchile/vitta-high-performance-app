@@ -77,10 +77,9 @@ export default function AthletesPage() {
           ]}/>
           <FilterSelect value={filterStatus} onChange={setFilterStatus} options={[
             { value: 'all',      label: 'Todos los estados' },
-            { value: 'on-track', label: 'En plan'  },
-            { value: 'peak',     label: 'Pico'     },
-            { value: 'deload',   label: 'Descarga' },
-            { value: 'missed',   label: 'Ausente'  },
+            { value: 'on-track', label: 'En plan'   },
+            { value: 'paused',   label: 'En pausa'  },
+            { value: 'canceled', label: 'Cancelado' },
           ]}/>
           <div style={{ flex: 1 }}/>
           <span className="muted" style={{ fontSize: 11 }}>{filtered.length} resultados</span>

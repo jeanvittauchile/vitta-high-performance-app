@@ -4,10 +4,10 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { CATEGORIES } from '@/lib/constants';
 import { PlusIcon, CalendarIcon, ChevronRight, UserIcon } from '@/components/icons';
-import StatusPill from '@/components/badges/StatusPill';
+import { StatusSelect } from '@/components/badges/StatusPill';
 import CreateSessionModal from '@/components/admin/CreateSessionModal';
 import AthleteProfileDrawer from '@/components/admin/AthleteProfileDrawer';
-import type { Athlete } from '@/lib/types';
+import type { Athlete, AthleteStatus } from '@/lib/types';
 
 const MONTH_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 const WEEKDAY_SHORT = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
@@ -283,6 +283,13 @@ export default function DashboardPage() {
     setMonthlyLoading(false);
   }, []);
 
+  async function updateAthleteStatus(athleteId: string, status: AthleteStatus) {
+    setAthletes(prev => prev.map(a => a.id === athleteId ? { ...a, status } : a));
+    const supabase = createClient();
+    const { error } = await supabase.from('athletes').update({ status }).eq('id', athleteId);
+    if (error) fetchAthletes();
+  }
+
   useEffect(() => {
     fetchAthletes();
     fetchTodaySessions();
@@ -309,7 +316,8 @@ export default function DashboardPage() {
   }, [fetchTodaySessions, fetchCompletedSessionCounts, fetchTotalSessionCounts, fetchMonthlySessions]);
 
   const onTrack = athletes.filter(a => a.status === 'on-track').length;
-  const missed  = athletes.filter(a => a.status === 'missed').length;
+  const paused   = athletes.filter(a => a.status === 'paused').length;
+  const canceled = athletes.filter(a => a.status === 'canceled').length;
 
   const monthlySessions = useMemo<MonthlyBucket[]>(() => {
     const filtered = monthlyAthleteFilter === 'all'
@@ -368,7 +376,7 @@ export default function DashboardPage() {
             <div>
               <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.04em' }}>Atletas — vista de hoy</div>
               <div className="muted" style={{ fontSize: 11, marginTop: 3 }}>
-                {loading ? 'Cargando...' : `${athletes.length} activos · ${onTrack} en plan · ${missed} ausentes`}
+                {loading ? 'Cargando...' : `${athletes.length} activos · ${onTrack} en plan · ${paused} en pausa · ${canceled} cancelados`}
                 {!loading && todaySessions.length > 0 && ` · ${sessionsDoneCount} realizadas hoy · ${sessionsPendingCount} pendientes`}
               </div>
             </div>
@@ -456,7 +464,7 @@ export default function DashboardPage() {
                         )}
                       </td>
                       <td><span className="mono tnum">{a.rpe7}</span></td>
-                      <td><StatusPill status={a.status}/></td>
+                      <td><StatusSelect status={a.status} onChange={next => updateAthleteStatus(a.id, next)}/></td>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <button
