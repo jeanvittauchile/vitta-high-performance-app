@@ -490,6 +490,7 @@ function ExercisePickerPanel({ blockId, category, athleteId, bests, existingName
   onDone: () => void;
 }) {
   const [search, setSearch] = useState('');
+  const [pickCategory, setPickCategory] = useState<CategoryId>(category);
   const [libExercises, setLibExercises] = useState<LibEx[]>([]);
   const [lastLogMap, setLastLogMap] = useState<Map<string, LastLog>>(new Map());
   const [addingKey, setAddingKey] = useState<string | null>(null);
@@ -497,9 +498,9 @@ function ExercisePickerPanel({ blockId, category, athleteId, bests, existingName
   const [error, setError] = useState('');
 
   useEffect(() => {
-    createClient().from('exercises').select('id, name, level, video_url, gif_url').eq('category', category).order('name')
+    createClient().from('exercises').select('id, name, level, video_url, gif_url').eq('category', pickCategory).order('name')
       .then(({ data }) => setLibExercises((data as LibEx[]) || []));
-  }, [category]);
+  }, [pickCategory]);
 
   useEffect(() => {
     if (!athleteId) return;
@@ -568,6 +569,29 @@ function ExercisePickerPanel({ blockId, category, athleteId, bests, existingName
 
   return (
     <div style={{ marginTop: 8, padding: 12, background: 'rgba(46,107,214,0.05)', borderRadius: 10, border: '1px solid var(--border)', display: 'grid', gap: 10 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+        {Object.values(CATEGORIES).map(c => {
+          const Ic = getCategoryIcon(c.id);
+          const on = pickCategory === c.id;
+          return (
+            <button key={c.id} type="button" onClick={() => setPickCategory(c.id as CategoryId)}
+              title={c.label}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderRadius: 7,
+                border: `1px solid ${on ? c.color : 'var(--border)'}`, background: on ? `${c.color}18` : 'var(--surface)',
+                color: on ? c.color : 'var(--text-muted)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 10, fontWeight: 700,
+              }}>
+              <Ic size={11} stroke="currentColor"/>
+              {c.short}
+            </button>
+          );
+        })}
+      </div>
+      {pickCategory !== category && (
+        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+          Añadiendo ejercicios de otra categoría a este bloque — útil para armar circuitos mixtos.
+        </div>
+      )}
       <input
         autoFocus
         placeholder="Buscar ejercicio..."
@@ -3124,7 +3148,7 @@ export default function PlannerPage() {
                                       : null;
                                     const gridCols = inCircuit ? '20px 1fr 1fr 46px 46px 1fr' : '20px 1fr 1fr 46px 46px 1fr 22px 22px';
                                     return (
-                                      <div key={item.id} style={{ background: 'white', borderRadius: 6, border: '1px solid var(--border)', overflow: 'hidden' }}>
+                                      <div key={item.id} style={{ background: 'white', borderRadius: 6, border: '1px solid var(--border)', overflow: isExpanded ? 'visible' : 'hidden' }}>
                                         <div
                                           style={{ display: 'grid', gridTemplateColumns: '20px 1fr auto auto auto', gap: 8, alignItems: 'center', padding: '8px 10px', fontSize: 12, cursor: 'pointer' }}
                                           onClick={() => toggleEx(item.id)}

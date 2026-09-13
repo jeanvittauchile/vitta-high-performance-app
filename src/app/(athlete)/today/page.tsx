@@ -360,14 +360,37 @@ function CircuitCard({ items, onToggleRound, onStartRest }: {
                   {roundDone && <CheckIcon size={12} stroke="white" strokeWidth={3}/>}
                 </div>
               </div>
-              {roundDone && restVal && parseRest(restVal) > 0 && (
-                <div onClick={e => e.stopPropagation()} style={{ padding: '0 2px 6px' }}>
-                  <button
-                    onClick={() => { unlockAudio(); onStartRest(parseRest(restVal)); }}
-                    style={{ width: '100%', padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(43,182,115,0.35)', background: 'rgba(43,182,115,0.10)', color: 'var(--green)', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-                  >
-                    <TimerIcon size={12} stroke="currentColor"/> Iniciar descanso · {restVal}
-                  </button>
+              {roundDone && (
+                <div onClick={e => e.stopPropagation()} style={{ padding: '2px 2px 8px' }}>
+                  <div style={{ background: 'rgba(43,182,115,0.06)', border: '1px solid rgba(43,182,115,0.18)', borderRadius: 8, padding: '6px 8px' }}>
+                    <div style={{ fontSize: 9, color: 'var(--green)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
+                      Registrar resultados
+                    </div>
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      {items.map(ex => {
+                        const s = ex.sets[ri];
+                        if (!s) return null;
+                        return (
+                          <div key={ex.id}>
+                            <div style={{ fontSize: 10, color: 'var(--d-text-muted)', fontWeight: 600, marginBottom: 4 }}>{ex.name}</div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                              <ActualInput label="Reps reales" value={s.actual_reps} setId={s.id} field="actual_reps"/>
+                              <ActualInput label="Carga (kg)" value={s.actual_load} setId={s.id} field="actual_load"/>
+                              <ActualInput label="RPE real" value={s.actual_rpe} setId={s.id} field="actual_rpe"/>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {restVal && parseRest(restVal) > 0 && (
+                      <button
+                        onClick={() => { unlockAudio(); onStartRest(parseRest(restVal)); }}
+                        style={{ width: '100%', marginTop: 8, padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(43,182,115,0.35)', background: 'rgba(43,182,115,0.10)', color: 'var(--green)', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                      >
+                        <TimerIcon size={12} stroke="currentColor"/> Iniciar descanso · {restVal}
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -767,26 +790,39 @@ export default function TodayPage() {
       });
   }, [session?.id]);
 
-  // Auto-save feedback (debounced 800ms)
+  const saveFeedback = useCallback(async () => {
+    if (!hasUserEdited.current) return;
+    clearTimeout(autoSaveTimerRef.current);
+    const sid = latestSessionIdRef.current;
+    const fb = latestFeedbackRef.current;
+    if (!sid) return;
+    hasUserEdited.current = false;
+    setFeedbackSaving(true);
+    const supabase = createClient();
+    const { error } = await supabase.from('session_feedback').upsert(
+      { session_id: sid, sleep_hours: fb.sleepHours, energy_level: fb.energyLevel || null, pain_level: fb.painLevel || null },
+      { onConflict: 'session_id' }
+    );
+    if (error) { console.error('[saveFeedback] upsert error:', error); hasUserEdited.current = true; }
+    setFeedbackSaving(false);
+    if (!error) {
+      setFeedbackSaved(true);
+      setTimeout(() => setFeedbackSaved(false), 2000);
+    }
+  }, []);
+
+  // Auto-save feedback (debounced 800ms) — also flushed immediately on finish/unmount below
   useEffect(() => {
     if (!hasUserEdited.current) return;
     clearTimeout(autoSaveTimerRef.current);
-    autoSaveTimerRef.current = setTimeout(async () => {
-      const sid = latestSessionIdRef.current;
-      const fb = latestFeedbackRef.current;
-      if (!sid) return;
-      setFeedbackSaving(true);
-      const supabase = createClient();
-      await supabase.from('session_feedback').upsert(
-        { session_id: sid, sleep_hours: fb.sleepHours, energy_level: fb.energyLevel || null, pain_level: fb.painLevel || null },
-        { onConflict: 'session_id' }
-      );
-      setFeedbackSaving(false);
-      setFeedbackSaved(true);
-      setTimeout(() => setFeedbackSaved(false), 2000);
-    }, 800);
+    autoSaveTimerRef.current = setTimeout(saveFeedback, 800);
     return () => clearTimeout(autoSaveTimerRef.current);
-  }, [feedback]);
+  }, [feedback, saveFeedback]);
+
+  // Flush any pending feedback save if the athlete navigates away before the debounce fires
+  useEffect(() => {
+    return () => { saveFeedback(); };
+  }, [saveFeedback]);
 
   function handleFeedbackChange(updates: Partial<typeof feedback>) {
     hasUserEdited.current = true;
@@ -827,6 +863,7 @@ export default function TodayPage() {
     setFinalElapsed(elapsed);
     setSessionFinished(true);
     stopTimer();
+    saveFeedback();
   }
 
   async function toggleSet(setId: string, done: boolean) {
