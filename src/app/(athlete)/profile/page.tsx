@@ -1,8 +1,10 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAthlete } from '@/lib/athlete-context';
 import { createClient } from '@/lib/supabase';
-import { CheckIcon, UserIcon } from '@/components/icons';
+import { CheckIcon, UserIcon, TrendIcon } from '@/components/icons';
+import { computeExerciseBests } from '@/lib/exercise-bests';
+import { computeStrengthStandards, STRENGTH_LEVELS, type Gender } from '@/lib/strength-standards';
 
 const NIVELES = [
   { value: 1, label: 'Principiante', sub: 'Menos de 1 año de entrenamiento' },
@@ -19,6 +21,7 @@ interface ProfileRow {
   promedio_kcal: number | null;
   nivel_entrenamiento: number | null;
   historial_lesiones: string | null;
+  genero: Gender | null;
   created_at: string;
 }
 
@@ -64,10 +67,14 @@ export default function ProfilePage() {
   const [kcal, setKcal]                           = useState('');
   const [nivel, setNivel]                         = useState<number | null>(null);
   const [lesiones, setLesiones]                   = useState('');
+  const [genero, setGenero]                       = useState<Gender | null>(null);
 
   const [saving, setSaving]     = useState(false);
   const [saved, setSaved]       = useState(false);
   const [error, setError]       = useState('');
+
+  const [bests, setBests] = useState<{ name: string; rm1: number }[]>([]);
+  const [bestsLoading, setBestsLoading] = useState(true);
 
   useEffect(() => {
     if (ctxLoading || !athleteId) return;
@@ -90,8 +97,29 @@ export default function ProfilePage() {
           setKcal(latest.promedio_kcal != null ? String(latest.promedio_kcal) : '');
           setNivel(latest.nivel_entrenamiento);
           setLesiones(latest.historial_lesiones || '');
+          setGenero(latest.genero || null);
         }
         setLoading(false);
+      });
+  }, [athleteId, ctxLoading]);
+
+  useEffect(() => {
+    if (ctxLoading || !athleteId) return;
+    const supabase = createClient();
+    supabase
+      .from('sessions')
+      .select(`
+        session_blocks (
+          session_exercises (
+            name,
+            sets ( done, actual_reps, actual_load )
+          )
+        )
+      `)
+      .eq('athlete_id', athleteId)
+      .then(({ data }) => {
+        setBests(computeExerciseBests(data ?? []));
+        setBestsLoading(false);
       });
   }, [athleteId, ctxLoading]);
 
@@ -107,6 +135,7 @@ export default function ProfilePage() {
       promedio_kcal:       kcal !== '' ? parseInt(kcal) : null,
       nivel_entrenamiento: nivel,
       historial_lesiones:  lesiones.trim() || null,
+      genero,
     };
 
     // Upsert: if current row exists update it, otherwise insert
@@ -134,6 +163,12 @@ export default function ProfilePage() {
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
+
+  const bodyweight = peso !== '' ? parseFloat(peso) : null;
+  const standards = useMemo(
+    () => genero ? computeStrengthStandards(bests, bodyweight, genero) : [],
+    [bests, bodyweight, genero]
+  );
 
   if (loading || ctxLoading) {
     return (
@@ -194,6 +229,28 @@ export default function ProfilePage() {
             <input type="number" min="100" max="250" step="1" value={estatura}
               onChange={e => setEstatura(e.target.value)} placeholder="ej. 175" style={inputStyle}/>
           )}
+        </div>
+
+        {field('Sexo biológico',
+          <div style={{ display: 'flex', gap: 8 }}>
+            {([{ v: 'masculino', l: 'Masculino' }, { v: 'femenino', l: 'Femenino' }] as const).map(opt => (
+              <button
+                key={opt.v}
+                onClick={() => setGenero(opt.v)}
+                style={{
+                  flex: 1, padding: '10px 0', borderRadius: 10,
+                  border: `1px solid ${genero === opt.v ? 'var(--vitta-blue)' : 'var(--d-border-strong)'}`,
+                  background: genero === opt.v ? 'rgba(74,138,240,0.15)' : 'rgba(255,255,255,0.04)',
+                  color: genero === opt.v ? '#4A8AF0' : 'var(--d-text)',
+                  cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
+                  transition: 'all 0.15s',
+                }}
+              >{opt.l}</button>
+            ))}
+          </div>
+        )}
+        <div style={{ fontSize: 11, color: 'var(--d-text-faint)', marginTop: -8 }}>
+          Se usa solo para calcular tus estándares de fuerza más abajo.
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -283,6 +340,74 @@ export default function ProfilePage() {
             <><CheckIcon size={16} stroke="#fff" strokeWidth={2.5}/> Guardado</>
           ) : saving ? 'Guardando…' : 'Guardar perfil'}
         </button>
+      </div>
+
+      {/* Strength standards */}
+      <div style={{ marginTop: 32 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <TrendIcon size={16} stroke="var(--vitta-blue-bright)"/>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--d-text)' }}>Estándares de fuerza</div>
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--d-text-faint)', marginBottom: 14, lineHeight: 1.5 }}>
+          Tu 1RM estimado dividido por tu peso corporal, comparado con los niveles típicos de fuerza.
+        </div>
+
+        {!genero ? (
+          <div style={{ padding: '16px 14px', borderRadius: 12, background: 'var(--d-surface)', border: '1px solid var(--d-border)', fontSize: 12, color: 'var(--d-text-muted)', lineHeight: 1.5 }}>
+            Selecciona tu sexo biológico arriba y guarda tu perfil para ver tus estándares de fuerza.
+          </div>
+        ) : !bodyweight ? (
+          <div style={{ padding: '16px 14px', borderRadius: 12, background: 'var(--d-surface)', border: '1px solid var(--d-border)', fontSize: 12, color: 'var(--d-text-muted)', lineHeight: 1.5 }}>
+            Ingresa tu peso corporal arriba y guarda tu perfil para calcular tus estándares de fuerza.
+          </div>
+        ) : bestsLoading ? (
+          <div style={{ padding: '16px 0', textAlign: 'center', fontSize: 12, color: 'var(--d-text-faint)' }}>Calculando...</div>
+        ) : (
+          <div style={{ display: 'grid', gap: 8 }}>
+            {standards.map(s => {
+              const levelMeta = s.level ? STRENGTH_LEVELS.find(l => l.id === s.level) : null;
+              const nextMeta = s.nextLevel ? STRENGTH_LEVELS.find(l => l.id === s.nextLevel) : null;
+              return (
+                <div key={s.lift.id} style={{ padding: '12px 14px', borderRadius: 12, background: 'var(--d-surface)', border: '1px solid var(--d-border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: s.matched ? 8 : 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--d-text)' }}>{s.lift.label}</div>
+                    {levelMeta ? (
+                      <span style={{ padding: '2px 8px', borderRadius: 4, background: `${levelMeta.color}22`, color: levelMeta.color, fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', flexShrink: 0 }}>
+                        {levelMeta.label}
+                      </span>
+                    ) : s.matched ? (
+                      <span style={{ padding: '2px 8px', borderRadius: 4, background: 'rgba(255,255,255,0.06)', color: 'var(--d-text-faint)', fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', flexShrink: 0 }}>
+                        Bajo principiante
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {s.matched ? (
+                    <>
+                      <div style={{ fontSize: 11, color: 'var(--d-text-muted)', marginBottom: 8 }}>
+                        1RM est. <span className="mono tnum" style={{ color: 'var(--d-text)', fontWeight: 700 }}>{s.matched.rm1}kg</span>
+                        {' · '}
+                        <span className="mono tnum" style={{ color: 'var(--vitta-blue-bright)', fontWeight: 700 }}>{s.ratio!.toFixed(2)}×</span> peso corporal
+                        {' · '}
+                        <span style={{ fontStyle: 'italic' }}>{s.matched.name}</span>
+                      </div>
+                      <div style={{ height: 6, borderRadius: 3, background: 'var(--d-border)', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${s.progressToNext ?? 0}%`, background: levelMeta?.color || '#9098AE', borderRadius: 3, transition: 'width 0.3s' }}/>
+                      </div>
+                      <div style={{ fontSize: 10, color: 'var(--d-text-faint)', marginTop: 4 }}>
+                        {nextMeta ? `${Math.round(s.progressToNext ?? 0)}% hacia ${nextMeta.label}` : 'Nivel máximo alcanzado'}
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ fontSize: 11, color: 'var(--d-text-faint)' }}>
+                      Sin registro — anota reps y carga reales en este ejercicio durante una sesión.
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* History */}
