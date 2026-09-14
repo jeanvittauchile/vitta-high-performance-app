@@ -4,7 +4,7 @@ import { useAthlete } from '@/lib/athlete-context';
 import { createClient } from '@/lib/supabase';
 import { CheckIcon, UserIcon, TrendIcon } from '@/components/icons';
 import { computeExerciseBests } from '@/lib/exercise-bests';
-import { computeStrengthStandards, STRENGTH_LEVELS, type Gender } from '@/lib/strength-standards';
+import { computeStrengthStandards, getMultipliers, STRENGTH_LEVELS, type Gender } from '@/lib/strength-standards';
 
 const NIVELES = [
   { value: 1, label: 'Principiante', sub: 'Menos de 1 año de entrenamiento' },
@@ -403,9 +403,56 @@ export default function ProfilePage() {
                       Sin registro — anota reps y carga reales en este ejercicio durante una sesión.
                     </div>
                   )}
+
+                  {/* Reference: factor + approx. kg to hit each tier at this bodyweight */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4, marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--d-border)' }}>
+                    {STRENGTH_LEVELS.map((lvl, i) => {
+                      const factor = getMultipliers(genero)[s.lift.id][i];
+                      const kg = Math.round(factor * bodyweight * 2) / 2;
+                      const isCurrent = s.level === lvl.id;
+                      return (
+                        <div key={lvl.id} style={{
+                          textAlign: 'center', padding: '4px 2px', borderRadius: 6,
+                          background: isCurrent ? `${lvl.color}1c` : 'transparent',
+                          border: `1px solid ${isCurrent ? `${lvl.color}55` : 'transparent'}`,
+                        }}>
+                          <div style={{ fontSize: 8, fontWeight: 700, color: isCurrent ? lvl.color : 'var(--d-text-faint)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                            {lvl.label.slice(0, 3)}
+                          </div>
+                          <div className="mono tnum" style={{ fontSize: 10, fontWeight: 700, color: isCurrent ? lvl.color : 'var(--d-text-muted)', marginTop: 2 }}>
+                            {factor}×
+                          </div>
+                          <div className="mono tnum" style={{ fontSize: 9, color: isCurrent ? lvl.color : 'var(--d-text-faint)' }}>
+                            {kg}kg
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Legend: what each tier means */}
+        {genero && bodyweight && !bestsLoading && (
+          <div style={{ marginTop: 16, display: 'grid', gap: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--d-text-faint)' }}>
+              Qué significa cada nivel
+            </div>
+            {STRENGTH_LEVELS.map(lvl => (
+              <div key={lvl.id} style={{ display: 'flex', gap: 10, padding: '10px 12px', borderRadius: 10, background: 'var(--d-surface)', border: '1px solid var(--d-border)' }}>
+                <div style={{ width: 3, borderRadius: 2, background: lvl.color, flexShrink: 0 }}/>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: lvl.color }}>{lvl.label}</span>
+                    <span style={{ fontSize: 10, color: 'var(--d-text-faint)' }}>{lvl.duration}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--d-text-muted)', lineHeight: 1.5, marginTop: 2 }}>{lvl.description}</div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

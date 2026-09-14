@@ -7,12 +7,27 @@ export type LiftId =
   | 'bench_press' | 'squat' | 'deadlift' | 'overhead_press' | 'barbell_row'
   | 'pull_ups' | 'front_squat' | 'hip_thrust' | 'leg_press';
 
-export const STRENGTH_LEVELS: { id: StrengthLevel; label: string; color: string }[] = [
-  { id: 'principiante', label: 'Principiante', color: '#9098AE' },
-  { id: 'novato',        label: 'Novato',       color: '#4A8AF0' },
-  { id: 'intermedio',    label: 'Intermedio',   color: '#2BB673' },
-  { id: 'avanzado',      label: 'Avanzado',     color: '#E8A33A' },
-  { id: 'elite',         label: 'Elite',        color: '#D7474B' },
+export const STRENGTH_LEVELS: { id: StrengthLevel; label: string; color: string; duration: string; description: string }[] = [
+  {
+    id: 'principiante', label: 'Principiante', color: '#9098AE', duration: '0–6 meses',
+    description: 'Nuevo en el entrenamiento estructurado. Aprendiendo la forma correcta y construyendo fuerza fundamental. La progresión lineal funciona bien.',
+  },
+  {
+    id: 'novato', label: 'Novato', color: '#4A8AF0', duration: '6–12 meses',
+    description: 'Progresión lineal constante. Construyendo fuerza en todos los ejercicios principales. La forma se está volviendo automática.',
+  },
+  {
+    id: 'intermedio', label: 'Intermedio', color: '#2BB673', duration: '1–2 años',
+    description: 'Base de fuerza establecida. El progreso requiere una programación más deliberada. Progresión semanal típica.',
+  },
+  {
+    id: 'avanzado', label: 'Avanzado', color: '#E8A33A', duration: '2–5 años',
+    description: 'Fuerte en todos los ejercicios principales. Progreso medido en meses, no semanas. La periodización se vuelve esencial.',
+  },
+  {
+    id: 'elite', label: 'Elite', color: '#D7474B', duration: '5+ años',
+    description: 'Niveles de fuerza excepcionales. Acercándose al potencial genético. Puede competir a alto nivel.',
+  },
 ];
 
 interface LiftDef {
