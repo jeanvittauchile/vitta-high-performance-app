@@ -15,6 +15,7 @@ interface DbSet {
   id: string;
   reps: string | null;
   load: string | null;
+  load_pct: number | null;
   rpe_target: number | null;
   rest: string | null;
   sort_order: number;
@@ -561,7 +562,7 @@ function ExercisePickerPanel({ blockId, category, athleteId, bests, existingName
 
     const { data: setsData } = await supabase.from('sets').insert(
       draftSets.map((s, i) => ({ session_ex_id: exData.id, reps: s.reps, load: s.load, rpe_target: s.rpe_target, rest: s.rest, done: false, sort_order: i }))
-    ).select('id, reps, load, rpe_target, rest, sort_order');
+    ).select('id, reps, load, load_pct, rpe_target, rest, sort_order');
 
     onExerciseAdded({ ...exData, sets: (setsData || []) as DbSet[] } as DbExercise);
     setAddingKey(null);
@@ -693,7 +694,7 @@ function AddSetForm({ exerciseId, onSaved, onClose }: {
       rest: rest || null,
       done: false,
       sort_order: nextSort,
-    }).select('id, reps, load, rpe_target, rest, sort_order').single();
+    }).select('id, reps, load, load_pct, rpe_target, rest, sort_order').single();
     setSaving(false);
     if (err) { setError(err.message); return; }
     if (data) {
@@ -796,7 +797,7 @@ function CopyPlanToAthleteModal({ currentAthleteId, year, month, plan, onClose }
       const end   = new Date(start.getFullYear(), start.getMonth(), start.getDate() + weeksInCalendarMonth(year, month) * 7 - 1);
       const { data } = await supabase
         .from('sessions')
-        .select(`id, title, duration, rpe_target, date, session_blocks ( id, name, category, color, sort_order, session_exercises ( id, exercise_id, name, level, note, sort_order, video_url, circuit_group, sets ( id, reps, load, rpe_target, rest, sort_order ) ) )`)
+        .select(`id, title, duration, rpe_target, date, session_blocks ( id, name, category, color, sort_order, session_exercises ( id, exercise_id, name, level, note, sort_order, video_url, circuit_group, sets ( id, reps, load, load_pct, rpe_target, rest, sort_order ) ) )`)
         .eq('athlete_id', currentAthleteId)
         .gte('date', toISO(start)).lte('date', toISO(end));
       sourceSessions = (data || []) as unknown as DbSession[];
@@ -811,8 +812,9 @@ function CopyPlanToAthleteModal({ currentAthleteId, year, month, plan, onClose }
       );
       if (planErr) { failedPlans++; continue; }
 
+      const targetBestsByName = sourceSessions.length > 0 ? await fetchBestsByName(supabase, targetId) : null;
       for (const s of sourceSessions) {
-        const ok = await copySessionToAthlete(supabase, s, targetId, s.date);
+        const ok = await copySessionToAthlete(supabase, s, targetId, s.date, targetBestsByName);
         if (!ok) failedSessions++;
       }
     }
@@ -1315,9 +1317,10 @@ function TemplatesModal({ onClose, onApply, applying }: {
 
 // ─── Copy Session Modal ──────────────────────────────────────
 
-function CopySessionModal({ session, athleteId, onClose, onCopied }: {
+function CopySessionModal({ session, athleteId, bestsByName, onClose, onCopied }: {
   session: DbSession;
   athleteId: string;
+  bestsByName: Map<string, BestEntry>;
   onClose: () => void;
   onCopied: (targetDate: string) => void;
 }) {
@@ -1331,38 +1334,9 @@ function CopySessionModal({ session, athleteId, onClose, onCopied }: {
     setError('');
     const supabase = createClient();
 
-    const { data: newSession, error: e1 } = await supabase
-      .from('sessions')
-      .insert({ athlete_id: athleteId, date: targetDate, title: session.title, duration: session.duration, rpe_target: session.rpe_target })
-      .select('id')
-      .single();
-    if (e1 || !newSession) { setError(e1?.message || 'Error al copiar sesión.'); setSaving(false); return; }
-
-    for (const block of session.session_blocks) {
-      const { data: newBlock, error: e2 } = await supabase
-        .from('session_blocks')
-        .insert({ session_id: newSession.id, name: block.name, category: block.category, color: block.color, sort_order: block.sort_order })
-        .select('id')
-        .single();
-      if (e2 || !newBlock) continue;
-
-      for (const ex of block.session_exercises) {
-        const { data: newEx, error: e3 } = await supabase
-          .from('session_exercises')
-          .insert({ block_id: newBlock.id, exercise_id: ex.exercise_id, name: ex.name, level: ex.level, note: ex.note, sort_order: ex.sort_order, video_url: ex.video_url, circuit_group: ex.circuit_group })
-          .select('id')
-          .single();
-        if (e3 || !newEx) continue;
-
-        if (ex.sets.length > 0) {
-          await supabase.from('sets').insert(
-            ex.sets.map(s => ({ session_ex_id: newEx.id, reps: s.reps, load: s.load, rpe_target: s.rpe_target, rest: s.rest, sort_order: s.sort_order, done: false }))
-          );
-        }
-      }
-    }
-
+    const ok = await copySessionToAthlete(supabase, session, athleteId, targetDate, bestsByName);
     setSaving(false);
+    if (!ok) { setError('Error al copiar sesión.'); return; }
     onCopied(targetDate);
     onClose();
   }
@@ -1402,11 +1376,36 @@ function CopySessionModal({ session, athleteId, onClose, onCopied }: {
 
 // ─── Copy Sessions to Athletes Modal (multi-session, multi-athlete) ──
 
+// A set defined with a %1RM is re-derived against the *target* athlete's own
+// 1RM instead of reusing the source athlete's kg — a % of RM should travel
+// with the session, not the specific weight it happened to resolve to.
+function resolveCopiedLoad(
+  set: { load: string | null; load_pct: number | null },
+  exerciseName: string,
+  targetBestsByName: Map<string, BestEntry> | null
+): string | null {
+  if (set.load_pct == null) return set.load;
+  const best = targetBestsByName?.get(exerciseName.trim().toLowerCase());
+  if (!best) return null; // target has no known 1RM for this exercise yet
+  return String(Math.round((set.load_pct / 100) * best.rm1 * 2) / 2);
+}
+
+async function fetchBestsByName(supabase: ReturnType<typeof createClient>, athleteId: string) {
+  const { data } = await supabase
+    .from('sessions')
+    .select(`session_blocks ( session_exercises ( name, sets ( done, actual_reps, actual_load ) ) )`)
+    .eq('athlete_id', athleteId);
+  const map = new Map<string, BestEntry>();
+  for (const b of computeExerciseBests(data ?? [])) map.set(b.name.trim().toLowerCase(), b);
+  return map;
+}
+
 async function copySessionToAthlete(
   supabase: ReturnType<typeof createClient>,
   session: DbSession,
   targetAthleteId: string,
-  targetDate: string
+  targetDate: string,
+  targetBestsByName: Map<string, BestEntry> | null = null
 ) {
   const { data: newSession, error: e1 } = await supabase
     .from('sessions')
@@ -1435,7 +1434,16 @@ async function copySessionToAthlete(
 
       if (ex.sets.length > 0) {
         await supabase.from('sets').insert(
-          ex.sets.map(s => ({ session_ex_id: newEx.id, reps: s.reps, load: s.load, rpe_target: s.rpe_target, rest: s.rest, sort_order: s.sort_order, done: false }))
+          ex.sets.map(s => ({
+            session_ex_id: newEx.id,
+            reps: s.reps,
+            load: resolveCopiedLoad(s, ex.name, targetBestsByName),
+            load_pct: s.load_pct,
+            rpe_target: s.rpe_target,
+            rest: s.rest,
+            sort_order: s.sort_order,
+            done: false,
+          }))
         );
       }
     }
@@ -1475,8 +1483,9 @@ function CopySessionsToAthletesModal({ sessions, currentAthleteId, onClose, onDo
 
     let failed = 0;
     for (const targetId of targetIds) {
+      const targetBestsByName = await fetchBestsByName(supabase, targetId);
       for (const session of sessions) {
-        const ok = await copySessionToAthlete(supabase, session, targetId, session.date);
+        const ok = await copySessionToAthlete(supabase, session, targetId, session.date, targetBestsByName);
         if (!ok) failed++;
       }
     }
@@ -1701,7 +1710,7 @@ export default function PlannerPage() {
           id, name, category, color, sort_order,
           session_exercises (
             id, exercise_id, name, level, note, sort_order, video_url, circuit_group,
-            sets ( id, reps, load, rpe_target, rest, sort_order )
+            sets ( id, reps, load, load_pct, rpe_target, rest, sort_order )
           )
         )
       `)
@@ -1801,7 +1810,7 @@ export default function PlannerPage() {
       .select(`id, title, duration, rpe_target, date,
         session_blocks ( id, name, category, color, sort_order,
           session_exercises ( id, name, level, note, sort_order,
-            sets ( id, reps, load, rpe_target, rest, sort_order )
+            sets ( id, reps, load, load_pct, rpe_target, rest, sort_order )
           )
         )`)
       .eq('athlete_id', id)
@@ -2113,7 +2122,7 @@ export default function PlannerPage() {
           session_ex_id: m.id, reps: null, load: null, rpe_target: null, rest: DEFAULT_REST, done: false,
           sort_order: m.sets.length + i,
         }));
-        const { data: added } = await supabase.from('sets').insert(inserts).select('id, reps, load, rpe_target, rest, sort_order');
+        const { data: added } = await supabase.from('sets').insert(inserts).select('id, reps, load, load_pct, rpe_target, rest, sort_order');
         newSetsMap.set(m.id, [...m.sets, ...((added || []) as DbSet[])]);
       } else {
         newSetsMap.set(m.id, m.sets);
@@ -2155,7 +2164,7 @@ export default function PlannerPage() {
     for (const m of members) {
       const { data: newSet } = await supabase.from('sets')
         .insert({ session_ex_id: m.id, reps: null, load: null, rpe_target: null, rest: DEFAULT_REST, done: false, sort_order: m.sets.length })
-        .select('id, reps, load, rpe_target, rest, sort_order').single();
+        .select('id, reps, load, load_pct, rpe_target, rest, sort_order').single();
       if (newSet) results.set(m.id, newSet as DbSet);
     }
     setDaySessions(prev => prev.map(s => ({
@@ -2221,8 +2230,8 @@ export default function PlannerPage() {
     const supabase = createClient();
     const nextSort = Math.max(...ex.sets.map(s => s.sort_order)) + 1;
     const { data: newSet } = await supabase.from('sets')
-      .insert({ session_ex_id: exerciseId, reps: set.reps, load: set.load, rpe_target: set.rpe_target, rest: set.rest, done: false, sort_order: nextSort })
-      .select('id, reps, load, rpe_target, rest, sort_order').single();
+      .insert({ session_ex_id: exerciseId, reps: set.reps, load: set.load, load_pct: set.load_pct, rpe_target: set.rpe_target, rest: set.rest, done: false, sort_order: nextSort })
+      .select('id, reps, load, load_pct, rpe_target, rest, sort_order').single();
     if (newSet) {
       setDaySessions(prev => prev.map(s => ({
         ...s,
@@ -2271,15 +2280,35 @@ export default function PlannerPage() {
   // ── Update set field ───────────────────────────────────────
   async function updateSet(setId: string, field: 'reps' | 'load' | 'rpe_target' | 'rest', raw: string, exerciseId: string, blockId: string) {
     const value = field === 'rpe_target' ? (raw ? parseFloat(raw) : null) : (raw.trim() || null);
+    // A manual kg edit overrides whatever %1RM produced the previous value.
+    const extra = field === 'load' ? { load_pct: null as number | null } : {};
     const supabase = createClient();
-    await supabase.from('sets').update({ [field]: value }).eq('id', setId);
+    await supabase.from('sets').update({ [field]: value, ...extra }).eq('id', setId);
     setDaySessions(prev => prev.map(s => ({
       ...s,
       session_blocks: s.session_blocks.map(b =>
         b.id === blockId ? {
           ...b,
           session_exercises: b.session_exercises.map(e =>
-            e.id === exerciseId ? { ...e, sets: e.sets.map(st => st.id === setId ? { ...st, [field]: value } : st) } : e
+            e.id === exerciseId ? { ...e, sets: e.sets.map(st => st.id === setId ? { ...st, [field]: value, ...extra } : st) } : e
+          ),
+        } : b
+      ),
+    })));
+  }
+
+  // ── Update a set's %1RM (recomputes the kg from the athlete's current best) ──
+  async function updateSetLoadPct(setId: string, pct: number | null, best: BestEntry | undefined, exerciseId: string, blockId: string) {
+    const load = pct != null && best ? String(Math.round((pct / 100) * best.rm1 * 2) / 2) : null;
+    const supabase = createClient();
+    await supabase.from('sets').update({ load_pct: pct, load }).eq('id', setId);
+    setDaySessions(prev => prev.map(s => ({
+      ...s,
+      session_blocks: s.session_blocks.map(b =>
+        b.id === blockId ? {
+          ...b,
+          session_exercises: b.session_exercises.map(e =>
+            e.id === exerciseId ? { ...e, sets: e.sets.map(st => st.id === setId ? { ...st, load_pct: pct, load } : st) } : e
           ),
         } : b
       ),
@@ -2314,7 +2343,7 @@ export default function PlannerPage() {
     await supabase.from('sets').delete().eq('session_ex_id', exerciseId);
     const { data: newSets } = await supabase.from('sets').insert(
       reps.map((r, i) => ({ session_ex_id: exerciseId, reps: r, load: null, rpe_target: null, rest: DEFAULT_REST, done: false, sort_order: i }))
-    ).select('id, reps, load, rpe_target, rest, sort_order');
+    ).select('id, reps, load, load_pct, rpe_target, rest, sort_order');
     setDaySessions(prev => prev.map(s => ({
       ...s,
       session_blocks: s.session_blocks.map(b =>
@@ -2384,7 +2413,7 @@ export default function PlannerPage() {
             id, name, category, color, sort_order,
             session_exercises (
               id, exercise_id, name, level, note, sort_order, video_url, circuit_group,
-              sets ( id, reps, load, rpe_target, rest, sort_order, done )
+              sets ( id, reps, load, load_pct, rpe_target, rest, sort_order, done )
             )
           )
         `)
@@ -2449,7 +2478,16 @@ export default function PlannerPage() {
 
             const sets = (ex.sets || []).sort((a: any, b: any) => a.sort_order - b.sort_order);
             for (const set of sets) {
-              await supabase.from('sets').insert({ session_ex_id: newEx.id, reps: set.reps, load: set.load, rpe_target: set.rpe_target, rest: set.rest, sort_order: set.sort_order, done: false });
+              await supabase.from('sets').insert({
+                session_ex_id: newEx.id,
+                reps: set.reps,
+                load: resolveCopiedLoad(set, ex.name, bestsByName),
+                load_pct: set.load_pct,
+                rpe_target: set.rpe_target,
+                rest: set.rest,
+                sort_order: set.sort_order,
+                done: false,
+              });
             }
           }
         }
@@ -2674,6 +2712,7 @@ export default function PlannerPage() {
         <CopySessionModal
           session={copyingSession}
           athleteId={id}
+          bestsByName={bestsByName}
           onClose={() => setCopyingSession(null)}
           onCopied={targetDate => {
             setMonthSessionMap(prev => {
@@ -3024,7 +3063,6 @@ export default function PlannerPage() {
                             background: dragOverBlock === block.id && dragBlock ? 'rgba(46,107,214,0.08)' : dragOverBlock === block.id ? `${blockColor}18` : isDone ? 'rgba(43,182,115,0.06)' : 'var(--surface-2)',
                             borderRadius: 10,
                             border: dragOverBlock === block.id && dragBlock ? '2px dashed #2E6BD6' : `2px solid ${dragOverBlock === block.id ? blockColor : isDone ? 'rgba(43,182,115,0.3)' : 'var(--border)'}`,
-                            overflow: 'hidden',
                             transition: 'border-color 0.12s, background 0.12s',
                             opacity: dragBlock?.id === block.id ? 0.5 : 1,
                             cursor: 'grab',
@@ -3205,15 +3243,16 @@ export default function PlannerPage() {
                                                     <input defaultValue={s.reps ?? ''} placeholder="—" onBlur={e => updateSet(s.id, 'reps', e.target.value, item.id, block.id)} style={si_css}/>
                                                     <input key={`load-${s.id}-${s.load ?? ''}`} defaultValue={s.load ?? ''} placeholder="—" type="number" min={0} step={0.5} onBlur={e => updateSet(s.id, 'load', e.target.value, item.id, block.id)} style={si_css}/>
                                                     <input
+                                                      key={`pct-${s.id}-${s.load_pct ?? ''}`}
+                                                      defaultValue={s.load_pct ?? ''}
                                                       placeholder={best ? '%' : '—'}
                                                       disabled={!best}
                                                       title={best ? `Calcula el KG · 1RM est. ${fmtLoad(best.rm1)}kg` : 'Sin 1RM registrado para este ejercicio'}
                                                       type="number" min={1} max={100} step={1}
                                                       onBlur={e => {
-                                                        const pct = parseFloat(e.target.value);
-                                                        if (!best || !pct) return;
-                                                        const kg = Math.round((pct / 100) * best.rm1 * 2) / 2;
-                                                        updateSet(s.id, 'load', String(kg), item.id, block.id);
+                                                        const raw = e.target.value.trim();
+                                                        const pct = raw ? parseFloat(raw) : null;
+                                                        updateSetLoadPct(s.id, pct, best, item.id, block.id);
                                                       }}
                                                       style={{ ...si_css, opacity: best ? 1 : 0.4 }}/>
                                                     <input defaultValue={s.rpe_target != null ? String(s.rpe_target) : ''} placeholder="—" type="number" min={1} max={10} step={0.5} onBlur={e => updateSet(s.id, 'rpe_target', e.target.value, item.id, block.id)} style={si_css}/>
