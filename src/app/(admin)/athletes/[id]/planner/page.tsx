@@ -119,7 +119,6 @@ function mapAthlete(a: any): Athlete {
 
 const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
-const RANK_COLORS = ['#F5A623', '#9098AE', '#CD7F32'];
 
 function fmtLoad(v: number): string {
   return v % 1 === 0 ? String(v) : v.toFixed(1);
@@ -3440,12 +3439,12 @@ export default function PlannerPage() {
           </div>
         )}
 
-        {/* Progress: exercise bests */}
+        {/* Progress: 1RM / 3RM of every exercise with recorded loads */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <TrendIcon size={16} stroke="var(--vitta-blue-bright)"/>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 700 }}>Mejores series · Ranking</div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>1RM estimado · Brzycki</div>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>1RM y 3RM por ejercicio</div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>Estimado desde las series registradas · Brzycki</div>
           </div>
         </div>
         {bestsLoading ? (
@@ -3453,51 +3452,34 @@ export default function PlannerPage() {
         ) : bests.length === 0 ? (
           <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '12px 0', textAlign: 'center' }}>Sin series completadas aún</div>
         ) : (
-          <div style={{ display: 'grid', gap: 6, marginBottom: 14 }}>
-            {bests.slice(0, 5).map((entry, i) => {
-              const rankColor = RANK_COLORS[i] ?? 'rgba(255,255,255,0.35)';
-              return (
-                <div key={entry.name} style={{
-                  background: i < 3 ? `${rankColor}14` : 'rgba(255,255,255,0.03)',
-                  border: `1px solid ${i < 3 ? `${rankColor}35` : 'rgba(255,255,255,0.08)'}`,
-                  borderRadius: 10, padding: '10px 12px',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                    <div style={{
-                      width: 22, height: 22, borderRadius: 11, flexShrink: 0,
-                      background: i < 3 ? rankColor : 'rgba(255,255,255,0.12)',
-                      color: i < 3 ? '#0E1936' : 'rgba(255,255,255,0.5)',
-                      display: 'grid', placeItems: 'center',
-                      fontSize: 10, fontWeight: 800,
-                    }}>{i + 1}</div>
-                    <div style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {entry.name}
-                    </div>
-                    <div className="mono" style={{ fontSize: 12, fontWeight: 800, color: rankColor, flexShrink: 0 }}>
-                      {entry.reps}×{fmtLoad(entry.load)}kg
-                    </div>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 3 }}>
-                    {[
-                      { label: '1RM', value: entry.rm1, accent: true },
-                      { label: '3RM', value: entry.rm3, accent: false },
-                      { label: '6RM', value: entry.rm6, accent: false },
-                      { label: '8RM', value: entry.rm8, accent: false },
-                    ].map(rm => (
-                      <div key={rm.label} style={{
-                        background: rm.accent ? 'rgba(46,107,214,0.18)' : 'rgba(255,255,255,0.05)',
-                        border: `1px solid ${rm.accent ? 'rgba(46,107,214,0.35)' : 'rgba(255,255,255,0.08)'}`,
-                        borderRadius: 6, padding: '4px 3px', textAlign: 'center',
-                      }}>
-                        <div style={{ fontSize: 7, color: rm.accent ? 'rgba(74,138,240,0.9)' : 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase' }}>{rm.label}</div>
-                        <div className="mono tnum" style={{ fontSize: 11, fontWeight: 800, color: rm.accent ? '#4A8AF0' : 'var(--text)', marginTop: 1 }}>{fmtLoad(rm.value)}</div>
-                        <div style={{ fontSize: 7, color: 'var(--text-muted)' }}>kg</div>
-                      </div>
-                    ))}
-                  </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 14 }}>
+            {[...bests].sort((a, b) => a.name.localeCompare(b.name, 'es')).map(entry => (
+              <div key={entry.name} title={`${entry.name} · mejor serie ${entry.reps}×${fmtLoad(entry.load)}kg`} style={{
+                background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 8, padding: '6px 7px', minWidth: 0,
+              }}>
+                <div style={{ fontSize: 10, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>
+                  {entry.name}
                 </div>
-              );
-            })}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
+                  {[
+                    { label: '1RM', value: entry.rm1, accent: true },
+                    { label: '3RM', value: entry.rm3, accent: false },
+                  ].map(rm => (
+                    <div key={rm.label} style={{
+                      background: rm.accent ? 'rgba(46,107,214,0.18)' : 'rgba(255,255,255,0.05)',
+                      border: `1px solid ${rm.accent ? 'rgba(46,107,214,0.35)' : 'rgba(255,255,255,0.08)'}`,
+                      borderRadius: 6, padding: '3px 2px', textAlign: 'center',
+                    }}>
+                      <div style={{ fontSize: 7, color: rm.accent ? 'rgba(74,138,240,0.9)' : 'rgba(255,255,255,0.4)', fontWeight: 700 }}>{rm.label}</div>
+                      <div className="mono tnum" style={{ fontSize: 11, fontWeight: 800, color: rm.accent ? '#4A8AF0' : 'var(--text)' }}>
+                        {fmtLoad(rm.value)}<span style={{ fontSize: 7, fontWeight: 600, color: 'var(--text-muted)' }}>kg</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
