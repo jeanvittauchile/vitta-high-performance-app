@@ -1987,6 +1987,67 @@ export default function PlannerPage() {
     }
   }
 
+  // ── Download 1RM / 3RM record as PDF ──────────────────────
+  function downloadRMPDF() {
+    if (bests.length === 0) return;
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const athleteName = esc(athlete?.name || '');
+    const today = new Date().toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' });
+    const rows = [...bests]
+      .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+      .map(b => `<tr>
+        <td class="name">${esc(b.name)}</td>
+        <td class="rm accent">${fmtLoad(b.rm1)} kg</td>
+        <td class="rm">${fmtLoad(b.rm3)} kg</td>
+        <td class="ref">${b.reps}×${fmtLoad(b.load)} kg</td>
+      </tr>`).join('');
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+    <title>RM ${athleteName}</title>
+    <style>
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:11px;color:#111;background:#fff;padding:24px 28px}
+      .header{display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:10px;border-bottom:2.5px solid #0E1936;margin-bottom:14px}
+      .athlete-name{font-size:18px;font-weight:800;color:#0E1936;letter-spacing:-.02em}
+      .sub{font-size:9.5px;color:#777;margin-top:3px;letter-spacing:.06em;text-transform:uppercase;font-weight:600}
+      .date{font-size:10px;color:#777}
+      table{width:100%;border-collapse:collapse}
+      th{text-align:left;color:#aaa;font-weight:700;padding:4px 8px 5px 0;letter-spacing:.05em;text-transform:uppercase;font-size:8px;border-bottom:1px solid #ddd}
+      th.rm,td.rm{text-align:center;width:90px}
+      th.ref,td.ref{text-align:right;width:100px}
+      td{padding:6px 8px 6px 0;border-bottom:1px solid #f0f0f0}
+      tr{page-break-inside:avoid}
+      td.name{font-weight:700;color:#0E1936}
+      td.rm{font-weight:800;font-size:12px}
+      td.accent{color:#2E6BD6}
+      td.ref{color:#888;font-size:10px}
+      .note{font-size:8.5px;color:#999;margin-top:12px}
+      .footer{font-size:8px;color:#bbb;text-align:center;padding-top:10px;border-top:1px solid #eee;margin-top:16px;letter-spacing:.04em}
+    </style></head><body>
+      <div class="header">
+        <div>
+          <div class="athlete-name">${athleteName}</div>
+          <div class="sub">Registro de RM · 1RM y 3RM por ejercicio</div>
+        </div>
+        <div class="date">${today}</div>
+      </div>
+      <table>
+        <thead><tr><th>Ejercicio</th><th class="rm">1RM</th><th class="rm">3RM</th><th class="ref">Mejor serie</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="note">Valores estimados con la fórmula de Brzycki a partir de las mejores series completadas (1 a 10 repeticiones).</div>
+      <div class="footer">Vitta High Performance &nbsp;·&nbsp; ${athleteName}</div>
+    </body></html>`;
+
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+      win.focus();
+      setTimeout(() => win.print(), 400);
+    }
+  }
+
   // ── Move block up / down ───────────────────────────────────
   async function moveBlock(blockId: string, sessionId: string, dir: 'up' | 'down') {
     const session = daySessions.find(s => s.id === sessionId);
@@ -3442,10 +3503,13 @@ export default function PlannerPage() {
         {/* Progress: 1RM / 3RM of every exercise with recorded loads */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <TrendIcon size={16} stroke="var(--vitta-blue-bright)"/>
-          <div>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 700 }}>1RM y 3RM por ejercicio</div>
             <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>Estimado desde las series registradas · Brzycki</div>
           </div>
+          <button className="btn btn-ghost btn-sm" onClick={downloadRMPDF} disabled={bestsLoading || bests.length === 0} title="Descargar registro de RM en PDF">
+            <DownloadIcon size={12}/>PDF
+          </button>
         </div>
         {bestsLoading ? (
           <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '12px 0', textAlign: 'center' }}>Calculando...</div>
