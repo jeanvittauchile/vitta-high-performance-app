@@ -42,7 +42,7 @@ interface LiftDef {
 }
 
 export const LIFTS: LiftDef[] = [
-  { id: 'bench_press',    label: 'Press de banca',     aliases: ['press banca', 'press de banca', 'bench press'] },
+  { id: 'bench_press',    label: 'Press de banca',     aliases: ['press banca', 'press de banca', 'press banco', 'press de banco', 'press plano', 'banco plano', 'bench press'] },
   { id: 'squat',          label: 'Sentadilla',         aliases: ['sentadilla', 'squat', 'back squat'], exclude: ['frontal', 'front'] },
   { id: 'deadlift',       label: 'Peso muerto',        aliases: ['peso muerto', 'deadlift', 'dead lift'] },
   { id: 'overhead_press', label: 'Press militar',      aliases: ['press militar', 'press de hombro', 'press hombro', 'overhead press', 'ohp', 'shoulder press', 'military press'] },
