@@ -124,16 +124,30 @@ function EditExerciseModal({ exercise, onClose, onSaved }: {
     setSaving(true);
     setError('');
     const supabase = createClient();
+    const trimmedName = name.trim();
     const { error: err } = await supabase.from('exercises').update({
-      name: name.trim(),
+      name: trimmedName,
       category,
       level,
       muscle: muscle.trim() || null,
       equipment: equipment.trim() || null,
       video_url: videoUrl.trim() || null,
     }).eq('id', exercise.dbId);
+    if (err) { setSaving(false); setError(err.message); return; }
+
+    // session_exercises.name is a snapshot taken at planning time, so a
+    // rename here doesn't reach sessions already planned. Cascade it into
+    // any planned exercise that still carries the old name — but leave
+    // alone instances the coach deliberately renamed to something else.
+    if (trimmedName !== exercise.name) {
+      const { error: cascadeErr } = await supabase.from('session_exercises')
+        .update({ name: trimmedName })
+        .eq('exercise_id', exercise.dbId)
+        .eq('name', exercise.name);
+      if (cascadeErr) console.error('No se pudo actualizar el nombre en sesiones planificadas:', cascadeErr);
+    }
+
     setSaving(false);
-    if (err) { setError(err.message); return; }
     onSaved({
       ...exercise,
       name: name.trim(),
