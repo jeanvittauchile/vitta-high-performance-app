@@ -353,9 +353,17 @@ function CircuitCard({ items, onToggleRound, onStartRest }: {
                 style={{ display: 'grid', gridTemplateColumns: cols, gap: 6, padding: '7px 2px', alignItems: 'center', cursor: 'pointer', background: roundDone ? 'rgba(43,182,115,0.10)' : 'transparent', borderRadius: 8 }}
               >
                 <div className="mono" style={{ fontSize: 12, fontWeight: 700, color: roundDone ? 'var(--green)' : 'var(--d-text)' }}>{ri + 1}</div>
-                {items.map(ex => (
-                  <div key={ex.id} className="mono tnum" style={{ fontSize: 12, color: 'var(--d-text)', textAlign: 'center' }}>{ex.sets[ri]?.reps || '—'}</div>
-                ))}
+                {items.map(ex => {
+                  const s = ex.sets[ri];
+                  const reps = s?.reps || '—';
+                  const load = s?.load ? (isNaN(Number(s.load)) ? s.load : `${s.load}kg`) : null;
+                  return (
+                    <div key={ex.id} className="mono tnum" style={{ fontSize: 12, color: 'var(--d-text)', textAlign: 'center', lineHeight: 1.25 }}>
+                      {reps}
+                      {load && <div style={{ fontSize: 10, color: 'var(--d-text-faint)' }}>{load}</div>}
+                    </div>
+                  );
+                })}
                 <div style={{ width: 22, height: 22, borderRadius: 11, border: `1.5px solid ${roundDone ? 'var(--green)' : 'var(--d-border-strong)'}`, background: roundDone ? 'var(--green)' : 'transparent', display: 'grid', placeItems: 'center' }}>
                   {roundDone && <CheckIcon size={12} stroke="white" strokeWidth={3}/>}
                 </div>
