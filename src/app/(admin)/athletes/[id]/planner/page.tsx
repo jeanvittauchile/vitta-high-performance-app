@@ -380,16 +380,18 @@ function loadFromPct(pct: number, best: BestEntry): string {
 
 // Each set's %1RM comes from REPS_TO_PCT unless the group has its own `pcts`
 // (reps → %, e.g. submaximal power work); `bodyweight` groups get no %.
-const SET_SCHEMES: { category: string; bodyweight?: boolean; pcts?: Record<number, number>; variants: string[] }[] = [
+// `rpes` groups are RPE-guided (one target per set, by index) and get no % either.
+const SET_SCHEMES: { category: string; bodyweight?: boolean; pcts?: Record<number, number>; rpes?: number[]; variants: string[] }[] = [
   { category: 'Fuerza Máxima', variants: ['10-8-6-3-3-3-3-3', '12-10-8-5-5-5-5-5'] },
   { category: 'Hipertrofia', variants: ['15-12-12-10-10-10-8', '15-12-12-10-10-10-10', '15-12-10-10-10-12-15'] },
   { category: 'Explosivos', pcts: { 6: 45, 5: 50, 4: 55, 3: 60 }, variants: ['6-6-6-6-6-6', '5-5-5-5-5', '4-4-4-4', '3-3-3'] },
   { category: 'Core', bodyweight: true, variants: ['10-10-10-10', '15-15-15-15', '20-20-20-20', '25-25-25-25'] },
+  { category: 'Protocolo Evaluativo', rpes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], variants: ['12-10-8-6-4-3-3-3-3-3'] },
 ];
 
 // ─── Set/rep scheme picker: preset buttons for common set schemes ─
 
-function SchemePicker({ onApply }: { onApply: (reps: string[], pcts: (number | null)[]) => void }) {
+function SchemePicker({ onApply }: { onApply: (reps: string[], pcts: (number | null)[], rpes: (number | null)[]) => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -422,14 +424,16 @@ function SchemePicker({ onApply }: { onApply: (reps: string[], pcts: (number | n
                 {group.variants.map(v => {
                   const reps = v.split('-');
                   const pcts = reps.map(r =>
-                    group.bodyweight ? null : group.pcts ? group.pcts[parseInt(r, 10)] ?? null : pctForReps(r));
+                    group.bodyweight || group.rpes ? null : group.pcts ? group.pcts[parseInt(r, 10)] ?? null : pctForReps(r));
                   const pctLabel = pcts.every(p => p == null) ? null : pcts.map(p => p ?? '—').join('-');
+                  const rpes = reps.map((_, i) => group.rpes?.[i] ?? null);
+                  const rpeLabel = rpes.every(r => r == null) ? null : rpes.map(r => r ?? '—').join('-');
                   return (
                     <button
                       key={v}
                       type="button"
-                      onClick={() => { onApply(reps, pcts); setOpen(false); }}
-                      title={pctLabel ? `Reps ${v} · %1RM ${pctLabel}` : `Reps ${v}`}
+                      onClick={() => { onApply(reps, pcts, rpes); setOpen(false); }}
+                      title={`Reps ${v}${pctLabel ? ` · %1RM ${pctLabel}` : ''}${rpeLabel ? ` · RPE ${rpeLabel}` : ''}`}
                       style={{
                         padding: '3px 6px', borderRadius: 4, border: '1px solid var(--border)',
                         background: 'var(--surface-2)', color: 'var(--text)', textAlign: 'left',
@@ -438,6 +442,7 @@ function SchemePicker({ onApply }: { onApply: (reps: string[], pcts: (number | n
                     >
                       <div>{v}</div>
                       {pctLabel && <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>{pctLabel} %</div>}
+                      {rpeLabel && <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>RPE {rpeLabel}</div>}
                     </button>
                   );
                 })}
@@ -2426,7 +2431,7 @@ export default function PlannerPage() {
   }
 
   // ── Apply a set/rep scheme preset (replaces all sets for the exercise) ──
-  async function applySetScheme(exerciseId: string, blockId: string, reps: string[], pcts: (number | null)[], best: BestEntry | undefined) {
+  async function applySetScheme(exerciseId: string, blockId: string, reps: string[], pcts: (number | null)[], rpes: (number | null)[], best: BestEntry | undefined) {
     const session = daySessions.find(s => s.session_blocks.some(b => b.id === blockId));
     const block = session?.session_blocks.find(b => b.id === blockId);
     const ex = block?.session_exercises.find(e => e.id === exerciseId);
@@ -2439,7 +2444,7 @@ export default function PlannerPage() {
         const pct = pcts[i] ?? null;
         // Keep the % even without a 1RM so the kg can be derived once one is logged / when copied.
         const load = pct != null && best ? loadFromPct(pct, best) : null;
-        return { session_ex_id: exerciseId, reps: r, load, load_pct: pct, rpe_target: null, rest: DEFAULT_REST, done: false, sort_order: i };
+        return { session_ex_id: exerciseId, reps: r, load, load_pct: pct, rpe_target: rpes[i] ?? null, rest: DEFAULT_REST, done: false, sort_order: i };
       })
     ).select('id, reps, load, load_pct, rpe_target, rest, sort_order');
     setDaySessions(prev => prev.map(s => ({
@@ -3410,7 +3415,7 @@ export default function PlannerPage() {
                                                   <button onClick={e => { e.stopPropagation(); setAddSetFor(item.id); }} className="btn btn-ghost btn-sm" style={{ fontSize: 10 }}>
                                                     <PlusIcon size={10}/>Añadir serie
                                                   </button>
-                                                  <SchemePicker onApply={(reps, pcts) => applySetScheme(item.id, block.id, reps, pcts, best)}/>
+                                                  <SchemePicker onApply={(reps, pcts, rpes) => applySetScheme(item.id, block.id, reps, pcts, rpes, best)}/>
                                                 </div>
                                               )
                                             )}
