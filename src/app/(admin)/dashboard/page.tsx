@@ -7,6 +7,7 @@ import { PlusIcon, CalendarIcon, ChevronRight, UserIcon } from '@/components/ico
 import { StatusSelect } from '@/components/badges/StatusPill';
 import CreateSessionModal from '@/components/admin/CreateSessionModal';
 import AthleteProfileDrawer from '@/components/admin/AthleteProfileDrawer';
+import StrengthProfileCard from '@/components/admin/StrengthProfileCard';
 import type { Athlete, AthleteStatus } from '@/lib/types';
 
 const MONTH_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
@@ -489,6 +490,8 @@ export default function DashboardPage() {
             </table></div>
           )}
         </div>
+
+        {!loading && athletes.length > 0 && <StrengthProfileCard athletes={athletes}/>}
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 12 }}>
           <div className="card" style={{ padding: 14 }}>
