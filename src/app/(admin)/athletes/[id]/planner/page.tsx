@@ -378,11 +378,12 @@ function loadFromPct(pct: number, best: BestEntry): string {
   return String(Math.round((pct / 100) * best.rm1 * 2) / 2);
 }
 
-// Each set's %1RM comes from REPS_TO_PCT; `bodyweight` groups get no %.
-const SET_SCHEMES: { category: string; bodyweight?: boolean; variants: string[] }[] = [
+// Each set's %1RM comes from REPS_TO_PCT unless the group has its own `pcts`
+// (reps → %, e.g. submaximal power work); `bodyweight` groups get no %.
+const SET_SCHEMES: { category: string; bodyweight?: boolean; pcts?: Record<number, number>; variants: string[] }[] = [
   { category: 'Fuerza Máxima', variants: ['10-8-6-3-3-3-3-3', '12-10-8-5-5-5-5-5'] },
   { category: 'Hipertrofia', variants: ['15-12-12-10-10-10-8', '15-12-12-10-10-10-10', '15-12-10-10-10-12-15'] },
-  { category: 'Explosivos', variants: ['6-6-6-6-6-6', '5-5-5-5-5', '4-4-4-4', '3-3-3'] },
+  { category: 'Explosivos', pcts: { 6: 45, 5: 50, 4: 55, 3: 60 }, variants: ['6-6-6-6-6-6', '5-5-5-5-5', '4-4-4-4', '3-3-3'] },
   { category: 'Core', bodyweight: true, variants: ['10-10-10-10', '15-15-15-15', '20-20-20-20', '25-25-25-25'] },
 ];
 
@@ -420,7 +421,8 @@ function SchemePicker({ onApply }: { onApply: (reps: string[], pcts: (number | n
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                 {group.variants.map(v => {
                   const reps = v.split('-');
-                  const pcts = reps.map(r => group.bodyweight ? null : pctForReps(r));
+                  const pcts = reps.map(r =>
+                    group.bodyweight ? null : group.pcts ? group.pcts[parseInt(r, 10)] ?? null : pctForReps(r));
                   const pctLabel = pcts.every(p => p == null) ? null : pcts.map(p => p ?? '—').join('-');
                   return (
                     <button
