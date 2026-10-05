@@ -365,16 +365,30 @@ function fmtLastLogDate(d: string) {
 const DEFAULT_SET_COUNT = 3;
 const DEFAULT_REST = '2:00';
 const REST_PRESETS = ['0:10', '0:30', '1:00', '1:30', '2:00', '2:30', '3:00'];
-const SET_SCHEMES: { category: string; variants: string[] }[] = [
+// Max reps → %1RM. Typing a whole rep count in this range auto-fills the set's %1RM.
+const REPS_TO_PCT: Record<number, number> = {
+  1: 100, 2: 95, 3: 93, 4: 90, 5: 87, 6: 85, 7: 83, 8: 80,
+  9: 77, 10: 75, 11: 73, 12: 70, 13: 68, 14: 67, 15: 65,
+};
+function pctForReps(reps: string | null): number | null {
+  const t = (reps ?? '').trim();
+  return /^\d+$/.test(t) ? REPS_TO_PCT[parseInt(t, 10)] ?? null : null;
+}
+function loadFromPct(pct: number, best: BestEntry): string {
+  return String(Math.round((pct / 100) * best.rm1 * 2) / 2);
+}
+
+// Each set's %1RM comes from REPS_TO_PCT; `bodyweight` groups get no %.
+const SET_SCHEMES: { category: string; bodyweight?: boolean; variants: string[] }[] = [
   { category: 'Fuerza Máxima', variants: ['10-8-6-3-3-3-3-3', '12-10-8-5-5-5-5-5'] },
-  { category: 'Hipertrofia', variants: ['15-12-12-10-8', '15-12-12-10-10', '15-12-10-12-15'] },
+  { category: 'Hipertrofia', variants: ['15-12-12-10-10-10-8', '15-12-12-10-10-10-10', '15-12-10-10-10-12-15'] },
   { category: 'Explosivos', variants: ['6-6-6-6-6-6', '5-5-5-5-5', '4-4-4-4', '3-3-3'] },
-  { category: 'Core', variants: ['10-10-10-10', '15-15-15-15', '20-20-20-20', '25-25-25-25'] },
+  { category: 'Core', bodyweight: true, variants: ['10-10-10-10', '15-15-15-15', '20-20-20-20', '25-25-25-25'] },
 ];
 
 // ─── Set/rep scheme picker: preset buttons for common set schemes ─
 
-function SchemePicker({ onApply }: { onApply: (reps: string[]) => void }) {
+function SchemePicker({ onApply }: { onApply: (reps: string[], pcts: (number | null)[]) => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -396,7 +410,7 @@ function SchemePicker({ onApply }: { onApply: (reps: string[]) => void }) {
         <div style={{
           position: 'absolute', top: '100%', left: 0, marginTop: 3, zIndex: 20,
           background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, padding: 8,
-          display: 'grid', gap: 8, width: 210, boxShadow: '0 4px 14px rgba(0,0,0,0.14)',
+          display: 'grid', gap: 8, width: 260, boxShadow: '0 4px 14px rgba(0,0,0,0.14)',
         }}>
           {SET_SCHEMES.map(group => (
             <div key={group.category}>
@@ -404,20 +418,27 @@ function SchemePicker({ onApply }: { onApply: (reps: string[]) => void }) {
                 {group.category}
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                {group.variants.map(v => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => { onApply(v.split('-')); setOpen(false); }}
-                    style={{
-                      padding: '3px 6px', borderRadius: 4, border: '1px solid var(--border)',
-                      background: 'var(--surface-2)', color: 'var(--text)',
-                      fontSize: 10, fontFamily: 'var(--font-mono)', cursor: 'pointer', lineHeight: 1.6,
-                    }}
-                  >
-                    {v}
-                  </button>
-                ))}
+                {group.variants.map(v => {
+                  const reps = v.split('-');
+                  const pcts = reps.map(r => group.bodyweight ? null : pctForReps(r));
+                  const pctLabel = pcts.every(p => p == null) ? null : pcts.map(p => p ?? '—').join('-');
+                  return (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => { onApply(reps, pcts); setOpen(false); }}
+                      title={pctLabel ? `Reps ${v} · %1RM ${pctLabel}` : `Reps ${v}`}
+                      style={{
+                        padding: '3px 6px', borderRadius: 4, border: '1px solid var(--border)',
+                        background: 'var(--surface-2)', color: 'var(--text)', textAlign: 'left',
+                        fontSize: 10, fontFamily: 'var(--font-mono)', cursor: 'pointer', lineHeight: 1.4,
+                      }}
+                    >
+                      <div>{v}</div>
+                      {pctLabel && <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>{pctLabel} %</div>}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           ))}
@@ -660,8 +681,9 @@ function ExercisePickerPanel({ blockId, category, athleteId, bests, existingName
 
 // ─── Add Set inline form ─────────────────────────────────────
 
-function AddSetForm({ exerciseId, onSaved, onClose }: {
+function AddSetForm({ exerciseId, best, onSaved, onClose }: {
   exerciseId: string;
+  best: BestEntry | undefined;
   onSaved: (set: DbSet) => void;
   onClose: () => void;
 }) {
@@ -685,10 +707,13 @@ function AddSetForm({ exerciseId, onSaved, onClose }: {
       .select('sort_order').eq('session_ex_id', exerciseId)
       .order('sort_order', { ascending: false }).limit(1);
     const nextSort = ((existing?.[0]?.sort_order ?? -1) as number) + 1;
+    // A typed kg wins; otherwise derive %1RM (and kg) from the rep count.
+    const pct = load ? null : pctForReps(reps);
     const { data, error: err } = await supabase.from('sets').insert({
       session_ex_id: exerciseId,
       reps: reps || null,
-      load: load || null,
+      load: load || (pct != null && best ? loadFromPct(pct, best) : null),
+      load_pct: pct,
       rpe_target: rpe ? Number(rpe) : null,
       rest: rest || null,
       done: false,
@@ -2338,10 +2363,16 @@ export default function PlannerPage() {
   }
 
   // ── Update set field ───────────────────────────────────────
-  async function updateSet(setId: string, field: 'reps' | 'load' | 'rpe_target' | 'rest', raw: string, exerciseId: string, blockId: string) {
+  async function updateSet(setId: string, field: 'reps' | 'load' | 'rpe_target' | 'rest', raw: string, exerciseId: string, blockId: string, best?: BestEntry) {
     const value = field === 'rpe_target' ? (raw ? parseFloat(raw) : null) : (raw.trim() || null);
-    // A manual kg edit overrides whatever %1RM produced the previous value.
-    const extra = field === 'load' ? { load_pct: null as number | null } : {};
+    // A manual kg edit overrides whatever %1RM produced the previous value;
+    // a rep count from the RM table sets the matching %1RM (and kg, when there's a 1RM).
+    let extra: { load_pct?: number | null; load?: string | null } = {};
+    if (field === 'load') extra = { load_pct: null };
+    if (field === 'reps') {
+      const pct = pctForReps(value as string | null);
+      if (pct != null) extra = best ? { load_pct: pct, load: loadFromPct(pct, best) } : { load_pct: pct };
+    }
     const supabase = createClient();
     await supabase.from('sets').update({ [field]: value, ...extra }).eq('id', setId);
     setDaySessions(prev => prev.map(s => ({
@@ -2359,7 +2390,7 @@ export default function PlannerPage() {
 
   // ── Update a set's %1RM (recomputes the kg from the athlete's current best) ──
   async function updateSetLoadPct(setId: string, pct: number | null, best: BestEntry | undefined, exerciseId: string, blockId: string) {
-    const load = pct != null && best ? String(Math.round((pct / 100) * best.rm1 * 2) / 2) : null;
+    const load = pct != null && best ? loadFromPct(pct, best) : null;
     const supabase = createClient();
     await supabase.from('sets').update({ load_pct: pct, load }).eq('id', setId);
     setDaySessions(prev => prev.map(s => ({
@@ -2393,7 +2424,7 @@ export default function PlannerPage() {
   }
 
   // ── Apply a set/rep scheme preset (replaces all sets for the exercise) ──
-  async function applySetScheme(exerciseId: string, blockId: string, reps: string[]) {
+  async function applySetScheme(exerciseId: string, blockId: string, reps: string[], pcts: (number | null)[], best: BestEntry | undefined) {
     const session = daySessions.find(s => s.session_blocks.some(b => b.id === blockId));
     const block = session?.session_blocks.find(b => b.id === blockId);
     const ex = block?.session_exercises.find(e => e.id === exerciseId);
@@ -2402,7 +2433,12 @@ export default function PlannerPage() {
     const supabase = createClient();
     await supabase.from('sets').delete().eq('session_ex_id', exerciseId);
     const { data: newSets } = await supabase.from('sets').insert(
-      reps.map((r, i) => ({ session_ex_id: exerciseId, reps: r, load: null, rpe_target: null, rest: DEFAULT_REST, done: false, sort_order: i }))
+      reps.map((r, i) => {
+        const pct = pcts[i] ?? null;
+        // Keep the % even without a 1RM so the kg can be derived once one is logged / when copied.
+        const load = pct != null && best ? loadFromPct(pct, best) : null;
+        return { session_ex_id: exerciseId, reps: r, load, load_pct: pct, rpe_target: null, rest: DEFAULT_REST, done: false, sort_order: i };
+      })
     ).select('id, reps, load, load_pct, rpe_target, rest, sort_order');
     setDaySessions(prev => prev.map(s => ({
       ...s,
@@ -3300,7 +3336,8 @@ export default function PlannerPage() {
                                                   return (
                                                   <div key={s.id} onClick={e => e.stopPropagation()} style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 6, padding: '4px 12px', alignItems: 'center', borderTop: '1px solid var(--border)' }}>
                                                     <span className="mono" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)' }}>{si + 1}</span>
-                                                    <input defaultValue={s.reps ?? ''} placeholder="—" onBlur={e => updateSet(s.id, 'reps', e.target.value, item.id, block.id)} style={si_css}/>
+                                                    <input defaultValue={s.reps ?? ''} placeholder="—" title="Reps 1–15 completan el %1RM automáticamente"
+                                                      onBlur={e => { if (e.target.value.trim() !== (s.reps ?? '')) updateSet(s.id, 'reps', e.target.value, item.id, block.id, best); }} style={si_css}/>
                                                     <input key={`load-${s.id}-${s.load ?? ''}`} defaultValue={s.load ?? ''} placeholder="—" type="number" min={0} step={0.5} onBlur={e => updateSet(s.id, 'load', e.target.value, item.id, block.id)} style={si_css}/>
                                                     <input
                                                       key={`pct-${s.id}-${s.load_pct ?? ''}`}
@@ -3350,6 +3387,7 @@ export default function PlannerPage() {
                                               addSetFor === item.id ? (
                                                 <AddSetForm
                                                   exerciseId={item.id}
+                                                  best={best}
                                                   onSaved={newSet => {
                                                     setDaySessions(prev => prev.map(s => ({
                                                       ...s,
@@ -3370,7 +3408,7 @@ export default function PlannerPage() {
                                                   <button onClick={e => { e.stopPropagation(); setAddSetFor(item.id); }} className="btn btn-ghost btn-sm" style={{ fontSize: 10 }}>
                                                     <PlusIcon size={10}/>Añadir serie
                                                   </button>
-                                                  <SchemePicker onApply={reps => applySetScheme(item.id, block.id, reps)}/>
+                                                  <SchemePicker onApply={(reps, pcts) => applySetScheme(item.id, block.id, reps, pcts, best)}/>
                                                 </div>
                                               )
                                             )}
