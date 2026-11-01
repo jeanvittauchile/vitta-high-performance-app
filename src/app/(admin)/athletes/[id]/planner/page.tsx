@@ -1447,39 +1447,164 @@ async function copySessionToAthlete(
 
   const blocks = [...session.session_blocks].sort((a, b) => a.sort_order - b.sort_order);
   for (const block of blocks) {
-    const { data: newBlock, error: e2 } = await supabase
-      .from('session_blocks')
-      .insert({ session_id: newSession.id, name: block.name, category: block.category, color: block.color, sort_order: block.sort_order })
-      .select('id')
-      .single();
-    if (e2 || !newBlock) continue;
-
-    const exs = [...block.session_exercises].sort((a, b) => a.sort_order - b.sort_order);
-    for (const ex of exs) {
-      const { data: newEx, error: e3 } = await supabase
-        .from('session_exercises')
-        .insert({ block_id: newBlock.id, exercise_id: ex.exercise_id, name: ex.name, level: ex.level, note: ex.note, sort_order: ex.sort_order, video_url: ex.video_url, circuit_group: ex.circuit_group })
-        .select('id')
-        .single();
-      if (e3 || !newEx) continue;
-
-      if (ex.sets.length > 0) {
-        await supabase.from('sets').insert(
-          ex.sets.map(s => ({
-            session_ex_id: newEx.id,
-            reps: s.reps,
-            load: resolveCopiedLoad(s, ex.name, targetBestsByName),
-            load_pct: s.load_pct,
-            rpe_target: s.rpe_target,
-            rest: s.rest,
-            sort_order: s.sort_order,
-            done: false,
-          }))
-        );
-      }
-    }
+    await copyBlockToSession(supabase, block, newSession.id, block.sort_order, targetBestsByName);
   }
   return true;
+}
+
+// Returns false if any part of the block could not be copied.
+async function copyBlockToSession(
+  supabase: ReturnType<typeof createClient>,
+  block: DbBlock,
+  targetSessionId: string,
+  sortOrder: number,
+  targetBestsByName: Map<string, BestEntry> | null = null
+) {
+  const { data: newBlock, error: e1 } = await supabase
+    .from('session_blocks')
+    .insert({ session_id: targetSessionId, name: block.name, category: block.category, color: block.color, sort_order: sortOrder })
+    .select('id')
+    .single();
+  if (e1 || !newBlock) return false;
+
+  let ok = true;
+  const exs = [...block.session_exercises].sort((a, b) => a.sort_order - b.sort_order);
+  for (const ex of exs) {
+    const { data: newEx, error: e2 } = await supabase
+      .from('session_exercises')
+      .insert({ block_id: newBlock.id, exercise_id: ex.exercise_id, name: ex.name, level: ex.level, note: ex.note, sort_order: ex.sort_order, video_url: ex.video_url, circuit_group: ex.circuit_group })
+      .select('id')
+      .single();
+    if (e2 || !newEx) { ok = false; continue; }
+
+    if (ex.sets.length > 0) {
+      const { error: e3 } = await supabase.from('sets').insert(
+        ex.sets.map(s => ({
+          session_ex_id: newEx.id,
+          reps: s.reps,
+          load: resolveCopiedLoad(s, ex.name, targetBestsByName),
+          load_pct: s.load_pct,
+          rpe_target: s.rpe_target,
+          rest: s.rest,
+          sort_order: s.sort_order,
+          done: false,
+        }))
+      );
+      if (e3) ok = false;
+    }
+  }
+  return ok;
+}
+
+// ─── Copy Block Modal ────────────────────────────────────────
+
+const NEW_SESSION = 'new';
+
+function CopyBlockModal({ block, session, athleteId, bestsByName, onClose, onCopied }: {
+  block: DbBlock;
+  session: DbSession;
+  athleteId: string;
+  bestsByName: Map<string, BestEntry>;
+  onClose: () => void;
+  onCopied: (targetDate: string, createdSession: boolean) => void;
+}) {
+  const [targetDate, setTargetDate] = useState('');
+  const [loaded, setLoaded] = useState<{ date: string; sessions: { id: string; title: string; session_blocks: { sort_order: number }[] }[] } | null>(null);
+  const [targetSessionId, setTargetSessionId] = useState(NEW_SESSION);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  // Null until the sessions of the currently selected date have loaded.
+  const targetSessions = loaded?.date === targetDate ? loaded.sessions : null;
+
+  // The block is added to a session that already exists on the target day, if the coach picks one.
+  useEffect(() => {
+    if (!targetDate) return;
+    let cancelled = false;
+    const supabase = createClient();
+    supabase
+      .from('sessions')
+      .select('id, title, session_blocks ( sort_order )')
+      .eq('athlete_id', athleteId)
+      .eq('date', targetDate)
+      .order('created_at')
+      .then(({ data, error: e }) => {
+        if (cancelled) return;
+        if (e) { setError('Error al cargar las sesiones de ese día.'); return; }
+        setLoaded({ date: targetDate, sessions: data ?? [] });
+        setTargetSessionId(data?.[0]?.id ?? NEW_SESSION);
+      });
+    return () => { cancelled = true; };
+  }, [targetDate, athleteId]);
+
+  async function handleCopy() {
+    if (!targetDate || !targetSessions) return;
+    setSaving(true);
+    setError('');
+    const supabase = createClient();
+
+    let sessionId = targetSessionId;
+    let sortOrder = 0;
+    const createdSession = targetSessionId === NEW_SESSION;
+    if (createdSession) {
+      const { data: newSession, error: e } = await supabase
+        .from('sessions')
+        .insert({ athlete_id: athleteId, date: targetDate, title: session.title, duration: session.duration, rpe_target: session.rpe_target })
+        .select('id')
+        .single();
+      if (e || !newSession) { setSaving(false); setError('Error al crear la sesión.'); return; }
+      sessionId = newSession.id;
+    } else {
+      const target = targetSessions.find(s => s.id === targetSessionId);
+      sortOrder = Math.max(-1, ...(target?.session_blocks ?? []).map(b => b.sort_order)) + 1;
+    }
+
+    const ok = await copyBlockToSession(supabase, block, sessionId, sortOrder, bestsByName);
+    setSaving(false);
+    onCopied(targetDate, createdSession);
+    if (!ok) { setError('El bloque no se copió completo. Revisa la sesión de destino antes de reintentar.'); return; }
+    onClose();
+  }
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(14,25,54,0.55)', display: 'grid', placeItems: 'center' }}>
+      <div className="card admin-modal" style={{ width: 'min(380px, calc(100vw - 32px))', padding: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 18 }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>Copiar bloque</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>{block.name} · {block.session_exercises.length} ejerc.</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 20 }}>×</button>
+        </div>
+        <div style={{ display: 'grid', gap: 14 }}>
+          <div>
+            <label style={lblStyle}>Fecha destino</label>
+            <input
+              type="date"
+              value={targetDate}
+              onChange={e => { setTargetDate(e.target.value); setError(''); }}
+              style={inputStyle}
+            />
+          </div>
+          {targetSessions && (
+            <div>
+              <label style={lblStyle}>Sesión destino</label>
+              <select value={targetSessionId} onChange={e => setTargetSessionId(e.target.value)} style={inputStyle}>
+                {targetSessions.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+                <option value={NEW_SESSION}>Nueva sesión: {session.title}</option>
+              </select>
+            </div>
+          )}
+          {error && <div style={{ fontSize: 12, color: 'var(--red)', padding: '7px 10px', background: 'rgba(215,71,75,0.08)', borderRadius: 6 }}>{error}</div>}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button onClick={onClose} className="btn btn-ghost">Cancelar</button>
+            <button onClick={handleCopy} disabled={saving || !targetSessions} className="btn btn-primary">
+              <CopyIcon size={13}/>{saving ? 'Copiando...' : 'Copiar bloque'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function CopySessionsToAthletesModal({ sessions, currentAthleteId, onClose, onDone }: {
@@ -1641,6 +1766,7 @@ export default function PlannerPage() {
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [applyingTemplate, setApplyingTemplate] = useState(false);
   const [copyingSession, setCopyingSession] = useState<DbSession | null>(null);
+  const [copyingBlock, setCopyingBlock] = useState<{ block: DbBlock; session: DbSession } | null>(null);
   const [showCopyPlanModal, setShowCopyPlanModal] = useState(false);
   const [selectSessionsMode, setSelectSessionsMode] = useState(false);
   const [selectedSessions, setSelectedSessions] = useState<Map<string, DbSession>>(new Map());
@@ -2826,6 +2952,25 @@ export default function PlannerPage() {
           }}
         />
       )}
+      {copyingBlock && (
+        <CopyBlockModal
+          block={copyingBlock.block}
+          session={copyingBlock.session}
+          athleteId={id}
+          bestsByName={bestsByName}
+          onClose={() => setCopyingBlock(null)}
+          onCopied={(targetDate, createdSession) => {
+            if (createdSession) {
+              setMonthSessionMap(prev => {
+                const next = new Map(prev);
+                if (!next.has(targetDate)) next.set(targetDate, copyingBlock.session.title);
+                return next;
+              });
+            }
+            if (targetDate === copyingBlock.session.date) fetchDaySessions();
+          }}
+        />
+      )}
       {showCopyPlanModal && (
         <CopyPlanToAthleteModal
           currentAthleteId={id}
@@ -3240,6 +3385,10 @@ export default function PlannerPage() {
                                   <button onClick={() => setEditBlockId(block.id)} title="Editar bloque"
                                     style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '3px 5px', borderRadius: 5 }}>
                                     <PencilIcon size={12}/>
+                                  </button>
+                                  <button onClick={() => setCopyingBlock({ block, session })} title="Copiar bloque a otro día"
+                                    style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '3px 5px', borderRadius: 5 }}>
+                                    <CopyIcon size={12}/>
                                   </button>
                                   <button onClick={() => deleteBlock(block.id, session.id)} title="Eliminar bloque"
                                     style={{ background: 'transparent', border: 'none', color: '#D7474B', cursor: 'pointer', padding: '3px 5px', borderRadius: 5 }}>
