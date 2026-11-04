@@ -1508,13 +1508,20 @@ function CopyBlockModal({ block, session, athleteId, bestsByName, onClose, onCop
   onClose: () => void;
   onCopied: (targetDate: string, createdSession: boolean) => void;
 }) {
+  const [otherAthletes, setOtherAthletes] = useState<{ id: string; name: string }[]>([]);
+  const [targetAthleteId, setTargetAthleteId] = useState(athleteId);
   const [targetDate, setTargetDate] = useState('');
-  const [loaded, setLoaded] = useState<{ date: string; sessions: { id: string; title: string; session_blocks: { sort_order: number }[] }[] } | null>(null);
+  const [loaded, setLoaded] = useState<{ athleteId: string; date: string; sessions: { id: string; title: string; session_blocks: { sort_order: number }[] }[] } | null>(null);
   const [targetSessionId, setTargetSessionId] = useState(NEW_SESSION);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  // Null until the sessions of the currently selected date have loaded.
-  const targetSessions = loaded?.date === targetDate ? loaded.sessions : null;
+  // Null until the sessions of the currently selected athlete and date have loaded.
+  const targetSessions = loaded?.athleteId === targetAthleteId && loaded.date === targetDate ? loaded.sessions : null;
+
+  useEffect(() => {
+    createClient().from('athletes').select('id, name').neq('id', athleteId).order('name')
+      .then(({ data }) => setOtherAthletes(data ?? []));
+  }, [athleteId]);
 
   // The block is added to a session that already exists on the target day, if the coach picks one.
   useEffect(() => {
@@ -1524,23 +1531,26 @@ function CopyBlockModal({ block, session, athleteId, bestsByName, onClose, onCop
     supabase
       .from('sessions')
       .select('id, title, session_blocks ( sort_order )')
-      .eq('athlete_id', athleteId)
+      .eq('athlete_id', targetAthleteId)
       .eq('date', targetDate)
       .order('created_at')
       .then(({ data, error: e }) => {
         if (cancelled) return;
         if (e) { setError('Error al cargar las sesiones de ese día.'); return; }
-        setLoaded({ date: targetDate, sessions: data ?? [] });
+        setLoaded({ athleteId: targetAthleteId, date: targetDate, sessions: data ?? [] });
         setTargetSessionId(data?.[0]?.id ?? NEW_SESSION);
       });
     return () => { cancelled = true; };
-  }, [targetDate, athleteId]);
+  }, [targetDate, targetAthleteId]);
 
   async function handleCopy() {
     if (!targetDate || !targetSessions) return;
     setSaving(true);
     setError('');
     const supabase = createClient();
+    const isOtherAthlete = targetAthleteId !== athleteId;
+    // %1RM loads are re-derived against the 1RM of whoever receives the block.
+    const targetBests = isOtherAthlete ? await fetchBestsByName(supabase, targetAthleteId) : bestsByName;
 
     let sessionId = targetSessionId;
     let sortOrder = 0;
@@ -1548,7 +1558,7 @@ function CopyBlockModal({ block, session, athleteId, bestsByName, onClose, onCop
     if (createdSession) {
       const { data: newSession, error: e } = await supabase
         .from('sessions')
-        .insert({ athlete_id: athleteId, date: targetDate, title: session.title, duration: session.duration, rpe_target: session.rpe_target })
+        .insert({ athlete_id: targetAthleteId, date: targetDate, title: session.title, duration: session.duration, rpe_target: session.rpe_target })
         .select('id')
         .single();
       if (e || !newSession) { setSaving(false); setError('Error al crear la sesión.'); return; }
@@ -1558,9 +1568,9 @@ function CopyBlockModal({ block, session, athleteId, bestsByName, onClose, onCop
       sortOrder = Math.max(-1, ...(target?.session_blocks ?? []).map(b => b.sort_order)) + 1;
     }
 
-    const ok = await copyBlockToSession(supabase, block, sessionId, sortOrder, bestsByName);
+    const ok = await copyBlockToSession(supabase, block, sessionId, sortOrder, targetBests);
     setSaving(false);
-    onCopied(targetDate, createdSession);
+    if (!isOtherAthlete) onCopied(targetDate, createdSession);
     if (!ok) { setError('El bloque no se copió completo. Revisa la sesión de destino antes de reintentar.'); return; }
     onClose();
   }
@@ -1576,6 +1586,13 @@ function CopyBlockModal({ block, session, athleteId, bestsByName, onClose, onCop
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 20 }}>×</button>
         </div>
         <div style={{ display: 'grid', gap: 14 }}>
+          <div>
+            <label style={lblStyle}>Atleta destino</label>
+            <select value={targetAthleteId} onChange={e => { setTargetAthleteId(e.target.value); setError(''); }} style={inputStyle}>
+              <option value={athleteId}>Este atleta</option>
+              {otherAthletes.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </div>
           <div>
             <label style={lblStyle}>Fecha destino</label>
             <input
@@ -3386,7 +3403,7 @@ export default function PlannerPage() {
                                     style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '3px 5px', borderRadius: 5 }}>
                                     <PencilIcon size={12}/>
                                   </button>
-                                  <button onClick={() => setCopyingBlock({ block, session })} title="Copiar bloque a otro día"
+                                  <button onClick={() => setCopyingBlock({ block, session })} title="Copiar bloque a otro día o atleta"
                                     style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '3px 5px', borderRadius: 5 }}>
                                     <CopyIcon size={12}/>
                                   </button>
